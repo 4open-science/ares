@@ -1126,7 +1126,9 @@ oop Reflection::invoke(instanceKlassHandle klass, methodHandle reflected_method,
         //tty->print_cr("Begin recover in reflection");
         RecoveryAction action(thread, &target_exception);
 
-        action.set_top_method(&method);
+        // TODO use bare Method*
+        Method* top_method = method();
+        action.set_top_method(&top_method);
 
         RecoveryOracle::recover(thread, &action);
 

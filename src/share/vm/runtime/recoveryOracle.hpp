@@ -77,10 +77,10 @@ public:
   static void recover(JavaThread* thread, RecoveryAction* action);
   static void do_recover(JavaThread* thread, RecoveryAction* action);
 
-  static bool has_unsafe_init(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
+  static bool has_unsafe_init(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
 
-  static void determine_failure_type_and_recovery_context(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
-  static void determine_recovery_action(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
+  static void determine_failure_type_and_recovery_context(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
+  static void determine_recovery_action(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
 
   static Handle allocate_target_exception(JavaThread* thread, Handle origin_exception, KlassHandle target_exception_klass);
 
@@ -89,13 +89,13 @@ public:
           Handle original_exception,
           Handle &transformed_exception);
 
-  static void fast_error_transformation(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
-  static void fast_early_return(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
+  static void fast_error_transformation(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
+  static void fast_early_return(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
 
-  static void fast_exception_handler_bci_and_caught_klass_for(methodHandle mh,
+  static void fast_exception_handler_bci_and_caught_klass_for(Method* mh,
           KlassHandle ex_klass, int throw_bci, KlassHandle &caught_klass,
           int &hander_bci, bool ignore_no_string_void, TRAPS);
-  static void fast_exception_handler_bci_and_caught_klass_use_induced(methodHandle mh,
+  static void fast_exception_handler_bci_and_caught_klass_use_induced(Method* mh,
           int throw_bci, KlassHandle &caught_klass, int &hander_bci, TRAPS);
 
 
@@ -103,14 +103,14 @@ public:
   static bool redis_contains_key_prefix(const char* prefix, TRAPS);
   static bool redis_contains_key_precise(const char* key, TRAPS);
 
-  static void fill_stack(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, int max_depth=MaxJavaStackTraceDepth, int max_frame_depth=MaxJavaStackTraceDepth);
+  static void fill_stack(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, int max_depth=MaxJavaStackTraceDepth, int max_frame_depth=MaxJavaStackTraceDepth);
 
   static void query_known_exception_handler(
-        GrowableArray<methodHandle>* methods,
+        GrowableArray<Method*>* methods,
         GrowableArray<int>* bcis,
         Handle cause_exception,
         KlassHandle &known_exception_type,
-        methodHandle &hander_method,
+        Method* &hander_method,
         int &bci,
         int &handler_index,
         TRAPS
@@ -119,7 +119,7 @@ public:
   static void query_known_exception_handler(
         Handle cause_exception,
         KlassHandle &known_exception_type,
-        methodHandle &hander_method,
+        Method* &hander_method,
         int &bci,
         int &index,
         TRAPS
@@ -128,11 +128,11 @@ public:
   static bool has_known_exception_handler(
        int begin_index,
        int end_index,
-       GrowableArray<methodHandle>* methods,
+       GrowableArray<Method*>* methods,
        GrowableArray<int>* bcis,
-       methodHandle top_method,
+       Method* top_method,
        KlassHandle &known_exception_type,
-       methodHandle &handler_method,
+       Method* &handler_method,
        int &handler_bci,
        int &handler_index,
        TRAPS);
@@ -140,11 +140,11 @@ public:
   static bool has_known_exception_handler_use_redis(
        int begin_index,
        int end_index,
-       GrowableArray<methodHandle>* methods,
+       GrowableArray<Method*>* methods,
        GrowableArray<int>* bcis,
-       methodHandle top_method,
+       Method* top_method,
        KlassHandle &known_exception_type,
-       methodHandle &hander_method,
+       Method* &hander_method,
        int &bci,
        int &handler_index,
        TRAPS);
@@ -152,11 +152,11 @@ public:
   static bool has_known_exception_handler_use_stack(
        int begin_index,
        int end_index,
-       GrowableArray<methodHandle>* methods,
+       GrowableArray<Method*>* methods,
        GrowableArray<int>* bcis,
-       methodHandle top_method,
+       Method* top_method,
        KlassHandle &known_exception_type,
-       methodHandle &hander_method,
+       Method* &hander_method,
        int &bci,
        int &handler_index,
        TRAPS);
@@ -164,18 +164,18 @@ public:
   static bool has_known_exception_handler_force_throwable(
        int begin_index,
        int end_index,
-       GrowableArray<methodHandle>* methods,
+       GrowableArray<Method*>* methods,
        GrowableArray<int>* bcis,
-       methodHandle top_method,
+       Method* top_method,
        KlassHandle &known_exception_type,
-       methodHandle &hander_method,
+       Method* &hander_method,
        int &bci,
        int &handler_index,
        TRAPS);
 
-  static bool is_sun_reflect_NativeMethodAccessorImpl(methodHandle mh);
+  static bool is_sun_reflect_NativeMethodAccessorImpl(Method* mh);
 
-  static void run_jpf_with_recovery_action(JavaThread* thread, GrowableArray<methodHandle>* methods,
+  static void run_jpf_with_recovery_action(JavaThread* thread, GrowableArray<Method*>* methods,
       GrowableArray<int>* bcis, RecoveryAction* action);
   static objArrayOop run_jpf_with_exception(JavaThread* thread, Handle exception, int &max_depth);
   static objArrayOop load_stack_data(JavaThread* thread, Handle exception, int &max_depth);
@@ -200,7 +200,7 @@ private:
   Handle* _origin_exception;
 
   // Used by reflection
-  methodHandle* _top_method;
+  Method** _top_method;
 
   // Use jni handles, thus we can freely use HandleMark
   Klass* _target_exception_klass;
@@ -259,8 +259,8 @@ public:
   }
 
   bool has_top_method() { return _top_method != NULL; }
-  methodHandle top_method() { return *_top_method; }
-  void set_top_method(methodHandle* m) { _top_method = m; }
+  Method* top_method() { return *_top_method; }
+  void set_top_method(Method** m) { _top_method = m; }
 
   Handle origin_exception() { return (*_origin_exception); }
 

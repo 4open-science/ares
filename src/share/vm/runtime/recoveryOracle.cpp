@@ -35,25 +35,25 @@ Handle RecoveryAction::allocate_target_exception(JavaThread* thread, Handle orig
   return RecoveryOracle::allocate_target_exception(thread, origin_exception, exception_klass);
 }
 
-void recoveryOracle_init(){
+void recoveryOracle_init() {
   RecoveryOracle::initialize();
 }
 
 redisContext* RecoveryOracle::_context = NULL;
 
-redisContext* RecoveryOracle::context(){
+redisContext* RecoveryOracle::context() {
   return _context;
 }
 
-const char* get_recovery_mode(){
-  if(UseRedis){
-    if(UseInduced){
+const char* get_recovery_mode() {
+  if (UseRedis) {
+    if (UseInduced) {
       return "UseInduced";
     }
     return "UseRedis";
   }
 
-  if(UseStack){
+  if (UseStack) {
     return "UseStack";
   }
 
@@ -80,7 +80,7 @@ bool RecoveryOracle::quick_cannot_recover_check(JavaThread* thread, Handle excep
     return true;
   }
 
-  if (exception.is_null()){
+  if (exception.is_null()) {
     return true;
   }
 
@@ -90,7 +90,7 @@ bool RecoveryOracle::quick_cannot_recover_check(JavaThread* thread, Handle excep
 
   // TODO Deprecated RuntimeExceptionOnly option
   if (/*RuntimeExeptionOnly && */
-      !exception->is_a(SystemDictionary::RuntimeException_klass())){
+      !exception->is_a(SystemDictionary::RuntimeException_klass())) {
     return true;
   }
 
@@ -153,11 +153,11 @@ void RecoveryOracle::recover(JavaThread* thread, RecoveryAction* action) {
   }
 }
 
-bool RecoveryOracle::is_sun_reflect_NativeMethodAccessorImpl(methodHandle mh) {
+bool RecoveryOracle::is_sun_reflect_NativeMethodAccessorImpl(Method* method) {
 
-  if(mh->is_native()) {
-    if (mh->name()->equals("invoke0")) {
-      if (mh->method_holder()->name()->equals("sun/reflect/NativeMethodAccessorImpl")) {
+  if (method->is_native()) {
+    if (method->name()->equals("invoke0")) {
+      if (method->method_holder()->name()->equals("sun/reflect/NativeMethodAccessorImpl")) {
         return true;
       }
     }
@@ -186,7 +186,7 @@ void RecoveryOracle::do_recover(JavaThread* thread, RecoveryAction* action) {
   }
 
   // 0). Collect stack
-  GrowableArray<methodHandle>* methods = new GrowableArray<methodHandle>(50);
+  GrowableArray<Method*>* methods = new GrowableArray<Method*>(50);
   GrowableArray<int>* bcis = new GrowableArray<int>(50);
   fill_stack(thread, methods, bcis);
 
@@ -217,8 +217,8 @@ void RecoveryOracle::do_recover(JavaThread* thread, RecoveryAction* action) {
 
 #ifdef ASSERT
  {
-    methodHandle top_method = methods->at(0);
-    if(top_method->is_native()) {
+    Method* top_method = methods->at(0);
+    if (top_method->is_native()) {
       if (top_method->name()->equals("invoke0")) {
         if (top_method->method_holder()->name()->equals("sun/reflect/NativeMethodAccessorImpl")) {
           // invoke0 will wrap all caught throwable into an InvocationTargetException
@@ -251,7 +251,7 @@ void RecoveryOracle::do_recover(JavaThread* thread, RecoveryAction* action) {
 
 
 // Make fill_stack simple
-bool RecoveryOracle::has_unsafe_init(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
+bool RecoveryOracle::has_unsafe_init(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
   HandleMark hm(thread);
 
   int end_index = action->recovery_context_offset();
@@ -261,15 +261,15 @@ bool RecoveryOracle::has_unsafe_init(JavaThread* thread, GrowableArray<methodHan
   }
 
   for (int index; index <= end_index; index++) {
-    methodHandle mh = methods->at(index);
+    Method* method = methods->at(index);
     int bci = bcis->at(index);
-    if (!mh->is_native()) {
-      Bytecodes::Code java_code = mh->java_code_at(bci);
+    if (!method->is_native()) {
+      Bytecodes::Code java_code = method->java_code_at(bci);
 
       if (java_code == Bytecodes::_invokespecial) { // invoke to init
-        Bytecode_invoke bi(mh, bci);
+        Bytecode_invoke bi(method, bci);
 
-        methodHandle callee = bi.static_target(thread);
+        Method* callee = bi.static_target(thread)();
         if (callee->is_initializer()) {
           if (callee->method_holder() == SystemDictionary::String_klass()) {
             if ((TraceRuntimeRecovery & TRACE_SKIP_UNSAFE) != 0) {
@@ -283,12 +283,12 @@ bool RecoveryOracle::has_unsafe_init(JavaThread* thread, GrowableArray<methodHan
       }
     }
 
-    if (mh->is_initializer()) {
-      if (mh->method_holder() == SystemDictionary::String_klass()) {
+    if (method->is_initializer()) {
+      if (method->method_holder() == SystemDictionary::String_klass()) {
         if ((TraceRuntimeRecovery & TRACE_SKIP_UNSAFE) != 0) {
           ResourceMark rm(thread);
           tty->print_cr("Skip unsafe <init> or <clinit> %s at %d",
-              mh->name_and_sig_as_C_string(), index);
+              method->name_and_sig_as_C_string(), index);
         }
         return true;
       }
@@ -298,7 +298,7 @@ bool RecoveryOracle::has_unsafe_init(JavaThread* thread, GrowableArray<methodHan
   return false;
 }
 
-void RecoveryOracle::determine_failure_type_and_recovery_context(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
+void RecoveryOracle::determine_failure_type_and_recovery_context(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
   HandleMark hm(thread);
   const int methods_length = methods->length();
   KlassHandle ex_klass (thread, action->origin_exception()->klass());
@@ -308,7 +308,7 @@ void RecoveryOracle::determine_failure_type_and_recovery_context(JavaThread* thr
   int handler_index;
   int index = 0;
   for (; index < methods_length; index++) {
-    methodHandle current_method = methods->at(index);
+    Method* current_method = methods->at(index);
     int current_bci = bcis->at(index);
 
     handler_bci = -1;
@@ -411,7 +411,7 @@ Handle RecoveryOracle::allocate_target_exception(JavaThread* thread, Handle orig
   return target_exception;
 }
 
-void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
+void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
   const int end_index = action->recovery_context_offset();
 
   // TODO clear all handles
@@ -419,20 +419,20 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
   HandleMark hm(thread);
 
   KlassHandle known_exception_type;
-  methodHandle handler_method;
+  Method* handler_method;
   int handler_bci = -1;
   int handler_index = -1;
- 
-  methodHandle current_mh;
+
+  Method* current_method;
   int current_bci;
 
   if (action->has_top_method()) {
-    current_mh = action->top_method();
-    const int ce_length = current_mh->checked_exceptions_length();
+    current_method = action->top_method();
+    const int ce_length = current_method->checked_exceptions_length();
 
     if (ce_length > 0) {
       if (has_known_exception_handler(0, end_index, methods, bcis,
-            current_mh, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
+            current_method, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
         // TODO
         assert(!thread->has_pending_exception(), "sanity check");
         assert(known_exception_type.not_null(), "sanity check");
@@ -471,22 +471,22 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
   assert(end_index>=0, "sanity check");
   assert(methods->length()>0, "sanity check");
 
-  current_mh = methods->at(0);
+  current_method = methods->at(0);
 
-  if (!current_mh->is_native()) {
+  if (!current_method->is_native()) {
     current_bci = bcis->at(0);
 
-    Bytecodes::Code java_code = current_mh->java_code_at(current_bci);
+    Bytecodes::Code java_code = current_method->java_code_at(current_bci);
     if (Bytecodes::is_invoke(java_code)) {
-      Bytecode_invoke bi(current_mh, current_bci);
-      current_mh = bi.static_target(thread);
+      Bytecode_invoke bi(current_method, current_bci);
+      current_method = bi.static_target(thread)();
 
       {
-        const int ce_length = current_mh->checked_exceptions_length();
+        const int ce_length = current_method->checked_exceptions_length();
 
         if (ce_length > 0) {
           if (has_known_exception_handler(0, end_index, methods, bcis,
-                current_mh, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
+                current_method, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
             // TODO
             assert(!thread->has_pending_exception(), "sanity check");
             assert(known_exception_type.not_null(), "sanity check");
@@ -525,15 +525,14 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
   }
 
   for (int index = 0; index <= end_index; index++) {
-    current_mh = methods->at(index);
-    assert(current_mh.not_null(), "sanity check");
+    current_method = methods->at(index);
     current_bci = bcis->at(index);
 
-    const int ce_length = current_mh->checked_exceptions_length();
+    const int ce_length = current_method->checked_exceptions_length();
 
     if (ce_length > 0) {
       if (has_known_exception_handler(index+1, end_index, methods, bcis,
-            current_mh, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
+            current_method, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
         // TODO
         assert(!thread->has_pending_exception(), "sanity check");
         assert(known_exception_type.not_null(), "sanity check");
@@ -576,7 +575,7 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
   }
 }
 
-void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
+void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
   // TODO clear all handles
   // save result as a global JNI handle
   HandleMark hm(thread);
@@ -586,10 +585,10 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
   if (ForceEarlyReturnAt) {
     int index = ForceEarlyReturnAtIndex;
     if (index >= 0 && index <= end_index) {
-      methodHandle current_mh = methods->at(index);
+      Method* current_method = methods->at(index);
       int current_bci = bcis->at(index);
 
-//      if (current_mh->is_native()) {
+//      if (current_method->is_native()) {
 //
 //        action->set_recovery_type(_early_return);
 //        action->set_early_return_offset(index);
@@ -599,18 +598,18 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
 //
 //          tty->print_cr("fast_early_return: force early return into native (index=%d, %s)",
 //              index,
-//              current_mh->name_and_sig_as_C_string()
+//              current_method->name_and_sig_as_C_string()
 //              );
 //        }
 //
 //        return;
 //      }
 
-      if (!current_mh->is_native()) {
-        Bytecodes::Code java_code = current_mh->java_code_at(current_bci);
+      if (!current_method->is_native()) {
+        Bytecodes::Code java_code = current_method->java_code_at(current_bci);
 
         if (Bytecodes::is_invoke(java_code)) {
-          Bytecode_invoke bi(current_mh, current_bci);
+          Bytecode_invoke bi(current_method, current_bci);
 
           action->set_recovery_type(_early_return);
           action->set_early_return_offset(index);
@@ -624,7 +623,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
                 index,
                 type2name(bi.result_type()),
                 action->early_return_size_of_parameters(),
-                current_mh->name_and_sig_as_C_string(),
+                current_method->name_and_sig_as_C_string(),
                 current_bci,
                 bi.static_target(thread)->name_and_sig_as_C_string()
                 );
@@ -644,29 +643,29 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
   }
 
   if (action->has_top_method()) {
-    methodHandle current_mh = action->top_method();
+    Method* current_method = action->top_method();
 
     if (OnlyEarlyReturnVoid) {
-      if (current_mh->result_type() == T_VOID) {
+      if (current_method->result_type() == T_VOID) {
         action->set_recovery_type(_early_return);
         action->set_early_return_offset(0);
-        action->set_early_return_type(current_mh->result_type());
-        action->set_early_return_size_of_parameters(current_mh->size_of_parameters());
+        action->set_early_return_type(current_method->result_type());
+        action->set_early_return_size_of_parameters(current_method->size_of_parameters());
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
           tty->print_cr("(%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, top method)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
-              type2name(current_mh->result_type()));
+              type2name(current_method->result_type()));
         }
         return;
       }
     } else {
       action->set_recovery_type(_early_return);
       action->set_early_return_offset(0);
-      action->set_early_return_type(current_mh->result_type());
-      action->set_early_return_size_of_parameters(current_mh->size_of_parameters());
+      action->set_early_return_type(current_method->result_type());
+      action->set_early_return_size_of_parameters(current_method->size_of_parameters());
 
       if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
         ResourceMark rm(thread);
@@ -674,7 +673,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
             action->origin_exception()->klass()->name()->as_C_string(),
             failure_type_name(action->failure_type()),
             end_index,
-            type2name(current_mh->result_type()));
+            type2name(current_method->result_type()));
       }
 
       return;
@@ -682,8 +681,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
   }
 
   for (int index = 0; index <= end_index; index++) {
-    methodHandle current_mh = methods->at(index);
-    assert(current_mh.not_null(), "sanity check");
+    Method* current_method = methods->at(index);
     int current_bci = bcis->at(index);
 
     // Check at explicit call
@@ -693,13 +691,13 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
 
       tty->print_cr("fast_early_return: checking index=%d, %s@%d, bytecode is %s",
           index,
-          current_mh->name_and_sig_as_C_string(),
+          current_method->name_and_sig_as_C_string(),
           current_bci,
-          current_mh->is_native() ? "native" : Bytecodes::name(current_mh->java_code_at(current_bci))
+          current_method->is_native() ? "native" : Bytecodes::name(current_method->java_code_at(current_bci))
           );
     }
 
-//    if (current_mh->is_native()) {
+//    if (current_method->is_native()) {
 //      action->set_recovery_type(_early_return);
 //      action->set_early_return_offset(index);
 //
@@ -708,7 +706,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
 //
 //        tty->print_cr("fast_early_return: force early return into native (index=%d, %s)",
 //            index,
-//            current_mh->name_and_sig_as_C_string()
+//            current_method->name_and_sig_as_C_string()
 //            );
 //      }
 //
@@ -726,11 +724,11 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
 
 
 
-    if (!current_mh->is_native()) {
-      Bytecodes::Code java_code = current_mh->java_code_at(current_bci);
+    if (!current_method->is_native()) {
+      Bytecodes::Code java_code = current_method->java_code_at(current_bci);
 
       if (Bytecodes::is_invoke(java_code)) {
-        Bytecode_invoke bi(current_mh, current_bci);
+        Bytecode_invoke bi(current_method, current_bci);
 
         if (OnlyEarlyReturnVoid && bi.result_type() != T_VOID) {
           continue;
@@ -747,7 +745,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
               index,
               type2name(bi.result_type()),
               action->early_return_size_of_parameters(),
-              current_mh->name_and_sig_as_C_string(),
+              current_method->name_and_sig_as_C_string(),
               current_bci,
               bi.static_target(thread)->name_and_sig_as_C_string()
               );
@@ -769,7 +767,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<methodH
   }
 }
 
-void RecoveryOracle::determine_recovery_action(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
+void RecoveryOracle::determine_recovery_action(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
   const int recovery_context_offset = action->recovery_context_offset();
   assert(recovery_context_offset >= 0, "sanity check");
 
@@ -800,19 +798,19 @@ void RecoveryOracle::determine_recovery_action(JavaThread* thread, GrowableArray
 
 
 void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_use_induced(
-    methodHandle mh, int throw_bci,
+    Method* method, int throw_bci,
     KlassHandle &caught_klass, 
     int &handler_bci,
     TRAPS) {
   // exception table holds quadruple entries of the form (beg_bci, end_bci, handler_bci, klass_index)
   // access exception table
-  ExceptionTable table(mh());
+  ExceptionTable table(method);
   int length = table.length();
   // iterate through all entries sequentially
-  constantPoolHandle pool(THREAD, mh->constants());
+  constantPoolHandle pool(THREAD, method->constants());
   for (int i = 0; i < length; i ++) {
     //reacquire the table in case a GC happened
-    ExceptionTable table(mh());
+    ExceptionTable table(method);
     int beg_bci = table.start_pc(i);
     int end_bci = table.end_pc(i);
     assert(beg_bci <= end_bci, "inconsistent exception table");
@@ -829,13 +827,13 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_use_induced(
 
         key.print("%s-induced:%s:%d:%d:%d",
             RedisKeyPrefix,
-            mh->name_and_sig_as_C_string(),
+            method->name_and_sig_as_C_string(),
             beg_bci,
             end_bci,
             handler_bci
             );
 
-        if(!redis_contains_key_precise(key.as_string(), THREAD)){
+        if (!redis_contains_key_precise(key.as_string(), THREAD)) {
           continue;
         }
 
@@ -867,7 +865,7 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_use_induced(
 
 
 bool has_string_void_init(KlassHandle klass) {
-  if(!klass->oop_is_instance()){
+  if (!klass->oop_is_instance()) {
     ShouldNotReachHere();
   }
 
@@ -879,7 +877,7 @@ bool has_string_void_init(KlassHandle klass) {
 // caught_klass may be null,
 // use handler_bci == -1 to determine whether we found a handler
 void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
-    methodHandle mh,
+    Method* method,
     KlassHandle ex_klass,
     int throw_bci,
     KlassHandle &caught_klass,
@@ -890,13 +888,13 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
   assert(caught_klass.is_null(), "sanity check");
   // exception table holds quadruple entries of the form (beg_bci, end_bci, handler_bci, klass_index)
   // access exception table
-  ExceptionTable table(mh());
+  ExceptionTable table(method);
   int length = table.length();
   // iterate through all entries sequentially
-  constantPoolHandle pool(THREAD, mh->constants());
+  constantPoolHandle pool(THREAD, method->constants());
   for (int i = 0; i < length; i ++) {
     //reacquire the table in case a GC happened
-    ExceptionTable table(mh());
+    ExceptionTable table(method);
     int beg_bci = table.start_pc(i);
     int end_bci = table.end_pc(i);
     assert(beg_bci <= end_bci, "inconsistent exception table");
@@ -917,7 +915,7 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
         assert(klass.not_null(), "klass not loaded");
 
         // TODO We should use a parameter to control this
-        if (ignore_no_string_void && !has_string_void_init(klass)){
+        if (ignore_no_string_void && !has_string_void_init(klass)) {
             if ((TraceRuntimeRecovery & TRACE_IGNORE) != 0) {
                 ResourceMark rm(THREAD);
                 tty->print_cr("Ignore Klass: %s", klass->name()->as_C_string());
@@ -936,8 +934,8 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
         KlassHandle klass = KlassHandle(THREAD, k);
 
         // TODO We should a parameter to control this
-        if(ignore_no_string_void && !has_string_void_init(klass)){
-            if((TraceRuntimeRecovery & TRACE_IGNORE) != 0){
+        if (ignore_no_string_void && !has_string_void_init(klass)) {
+            if ((TraceRuntimeRecovery & TRACE_IGNORE) != 0) {
                 ResourceMark rm(THREAD);
                 tty->print_cr("Ignore Klass: %s", klass->name()->as_C_string());
             }
@@ -964,20 +962,20 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
 
 bool RecoveryOracle::error_transformation(JavaThread* thread,
     Handle original_exception,
-    Handle &transformed_exception){
-  if(!EnableRecovery){
+    Handle &transformed_exception) {
+  if (!EnableRecovery) {
     return false;
   }
 
   TRAPS = thread;
 
-  if (original_exception.is_null()){
+  if (original_exception.is_null()) {
     return false;
   }
 
   // TODO Deprecated RuntimeExceptionOnly option
   if (/*RuntimeExeptionOnly && */
-      !original_exception->is_a(SystemDictionary::RuntimeException_klass())){
+      !original_exception->is_a(SystemDictionary::RuntimeException_klass())) {
     return false;
   }
 
@@ -996,7 +994,7 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
 
   ResourceMark rm(thread);
 
-  GrowableArray<methodHandle>* methods = new GrowableArray<methodHandle>(50);
+  GrowableArray<Method*>* methods = new GrowableArray<Method*>(50);
   GrowableArray<int>* bcis = new GrowableArray<int>(50);
 
   if ((TraceRuntimeRecovery & TRACE_PRINT_STACK) != 0) {
@@ -1012,7 +1010,6 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
 
     bool should_repeat;
     Method* current_method = NULL;
-    methodHandle current_mh = methodHandle(thread, current_method);
     Handle exception_handle = original_exception;
     int current_throw_bci = -1;
     int current_handler_bci = -1;
@@ -1026,14 +1023,13 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
 
     int length = methods->length();
     for (int i=0; i<length; i++) {
-      current_mh = methods->at(i);
+      current_method = methods->at(i);
       current_throw_bci = bcis->at(i);
 
-      assert(current_mh.not_null(), "sanity check!");
 
-      if((TraceRuntimeRecovery & TRACE_CHECK_ESCAPE) != 0){
+      if ((TraceRuntimeRecovery & TRACE_CHECK_ESCAPE) != 0) {
         ResourceMark rm(thread);
-        tty->print_cr("Check Escape: %d %s@%d", i, current_mh->name_and_sig_as_C_string(), current_throw_bci);
+        tty->print_cr("Check Escape: %d %s@%d", i, current_method->name_and_sig_as_C_string(), current_throw_bci);
       }
 
       do {
@@ -1045,7 +1041,7 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
 
         assert(eh_klass.not_null(), "sanity check!");
         fast_exception_handler_bci_and_caught_klass_for(
-            current_mh, eh_klass, current_throw_bci,
+            current_method, eh_klass, current_throw_bci,
             caught_klass, current_handler_bci, false,
             THREAD);
         if (HAS_PENDING_EXCEPTION) {
@@ -1056,20 +1052,20 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
         }
 
         // Comment this check block if you want to ignore finally block
-        if (current_handler_bci != -1){
-          if (caught_klass.is_null()){ // a finally block
+        if (current_handler_bci != -1) {
+          if (caught_klass.is_null()) { // a finally block
             current_handler_bci = -1;
           }
         }
 
         if (current_handler_bci == -1 // not a real catch block (may be a finally block)
-            && !escaped){
+            && !escaped) {
           // TODO double check
           // if the eh_klass is null,
           // it will return the handler_bci immediately
           assert(null_handle.is_null(), "sanity check!");
           fast_exception_handler_bci_and_caught_klass_for(
-              current_mh, null_handle, current_other_throw_bci,
+              current_method, null_handle, current_other_throw_bci,
               escaped_caught_klass, current_other_handler_bci,
               false, THREAD);
           // Should not have pending exception
@@ -1079,15 +1075,15 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
           }
 
           // there is another handler for another kind of exception
-          if(current_other_handler_bci != -1){
-            //if(escaped_caught_klass.not_null()) { // not a finally block
+          if (current_other_handler_bci != -1) {
+            //if (escaped_caught_klass.not_null()) { // not a finally block
             escaped = true;
             //}
           }
         }
       } while (should_repeat && (current_handler_bci != -1));
 
-      if (current_handler_bci >= 0 ){
+      if (current_handler_bci >= 0 ) {
         break;
       }
     }
@@ -1096,8 +1092,8 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
       tty->print_cr("Finish Check Escape %d", escaped);
     }
 
-    //  if(!escaped && 
-    //          original_exception->klass()->name() == (SystemDictionary::NullPointerException_klass())){
+    //  if (!escaped && 
+    //          original_exception->klass()->name() == (SystemDictionary::NullPointerException_klass())) {
     //    escaped = true;
     //  }
 
@@ -1108,19 +1104,19 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
       }
       do_transformation = true;
       no_handler = true;
-    }else if(TransformEscaped
-        && escaped){
+    }else if (TransformEscaped
+        && escaped) {
       // a runtime exception that is caught by a catch block wrt Exception or Throwable
-      if(/*caught_klass.not_null() && */
-          !caught_klass->is_subtype_of(SystemDictionary::RuntimeException_klass())){
-        if((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+      if (/*caught_klass.not_null() && */
+          !caught_klass->is_subtype_of(SystemDictionary::RuntimeException_klass())) {
+        if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
           ResourceMark rm(THREAD);
           tty->print_cr("Try to transform an exception %s that escapes an error handler in the stack.", 
               original_exception->klass()->name()->as_C_string());
         }
         do_transformation = true;
       }else {
-        if((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+        if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
           ResourceMark rm(THREAD);
           tty->print_cr("Give up to transform an exception %s that has an handler [%s] in the stack.", 
               original_exception->klass()->name()->as_C_string(),
@@ -1136,7 +1132,7 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
             original_exception->klass()->name()->as_C_string());
         tty->print_cr("Caught klass: %s, Handler Method: %s, Handler bci: %d, Escaped: %d",
             caught_klass.is_null()?"any":caught_klass->name()->as_C_string(),
-            current_mh->name_and_sig_as_C_string(),
+            current_method->name_and_sig_as_C_string(),
             current_handler_bci,
             escaped
             );
@@ -1156,7 +1152,7 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
 
   if (do_transformation) {
     KlassHandle known_exception_type;
-    methodHandle handler_method;
+    Method* handler_method;
     int bci = -1;
     int index = -1;
     RecoveryOracle::query_known_exception_handler(
@@ -1170,14 +1166,14 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
           THREAD
         );
 
-    if((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+    if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
       ResourceMark rm(THREAD);
       tty->print_cr("Now we begin to transform an exception %s.",
           original_exception->klass()->name()->as_C_string()
           );
     }
 
-    if (handler_method.not_null()) {
+    if (handler_method != NULL) {
       ResourceMark rm(THREAD);
       stringStream ss;
       ss.print("Exception transformation: %s -> %s.",
@@ -1188,7 +1184,7 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
 
       assert(has_string_void_init(known_exception_type), "sanity check!");
 
-      if((TraceRuntimeRecovery & TRACE_TRANSFORMING) != 0) {
+      if ((TraceRuntimeRecovery & TRACE_TRANSFORMING) != 0) {
         ResourceMark rm(THREAD);
         tty->print_cr("Transforming an exception %s to %s w.r.t. %s@%d %s.",
           original_exception->klass()->name()->as_C_string(),
@@ -1233,37 +1229,37 @@ bool RecoveryOracle::error_transformation(JavaThread* thread,
 }
 
 // return false when reply is nil, empty list, empty string
-bool RecoveryOracle::redis_contains_key_common(const char* keys_command, TRAPS){
+bool RecoveryOracle::redis_contains_key_common(const char* keys_command, TRAPS) {
 
   redisReply* reply = (redisReply*)redisCommand(
       _context,
       keys_command);
 
-  if(reply == NULL){
+  if (reply == NULL) {
     freeReplyObject(reply);
     //tty->print_cr("ERROR: redis reply is null.");
     return false;
   }
 
-  if(reply->type == REDIS_REPLY_ERROR){
+  if (reply->type == REDIS_REPLY_ERROR) {
     freeReplyObject(reply);
     //tty->print_cr("ERROR: redis error message %s.", reply->str);
     return false;
   }
 
-  if(reply->type ==  REDIS_REPLY_NIL){
+  if (reply->type ==  REDIS_REPLY_NIL) {
     freeReplyObject(reply);
     //tty->print_cr("INFO: redis reply is null %s.");
     return false;
   }
 
-  if(reply->type ==  REDIS_REPLY_INTEGER){
+  if (reply->type ==  REDIS_REPLY_INTEGER) {
     freeReplyObject(reply);
     //tty->print_cr("INFO: redis reply is integer %d.", reply->integer);
     return reply->integer != 0;
   }
 
-  if(reply->type == REDIS_REPLY_ARRAY){
+  if (reply->type == REDIS_REPLY_ARRAY) {
     freeReplyObject(reply);
     //tty->print_cr("INFO: Redis reply is array with %d elements.", reply->elements);
     return reply->elements > 0;
@@ -1274,7 +1270,7 @@ bool RecoveryOracle::redis_contains_key_common(const char* keys_command, TRAPS){
   return false;
 }
 
-bool RecoveryOracle::redis_contains_key_prefix(const char* prefix, TRAPS){
+bool RecoveryOracle::redis_contains_key_prefix(const char* prefix, TRAPS) {
   ResourceMark rm(THREAD);
 
   stringStream ss;
@@ -1283,7 +1279,7 @@ bool RecoveryOracle::redis_contains_key_prefix(const char* prefix, TRAPS){
   return redis_contains_key_common(ss.as_string(), THREAD);
 }
 
-bool RecoveryOracle::redis_contains_key_precise(const char* precise, TRAPS){
+bool RecoveryOracle::redis_contains_key_precise(const char* precise, TRAPS) {
   ResourceMark rm(THREAD);
 
   stringStream ss;
@@ -1295,15 +1291,15 @@ bool RecoveryOracle::redis_contains_key_precise(const char* precise, TRAPS){
 bool RecoveryOracle::has_known_exception_handler_use_redis(
        int begin_index,
        int end_index,
-       GrowableArray<methodHandle>* methods,
+       GrowableArray<Method*>* methods,
        GrowableArray<int>* bcis,
-       methodHandle top_method,
+       Method* top_method,
        KlassHandle &known_exception_type,
-       methodHandle &handler_method,
+       Method* &handler_method,
        int &handler_bci,
        int &handler_index,
        TRAPS
-    ){
+    ) {
 
   JavaThread* thread = (JavaThread*)THREAD;
 
@@ -1316,7 +1312,7 @@ bool RecoveryOracle::has_known_exception_handler_use_redis(
   CheckedExceptionElement* table = top_method->checked_exceptions_start();
   assert(table != NULL, "sanity check");
 
-  methodHandle current_mh (thread, NULL);
+  Method* current_method = NULL;
   int current_bci = -1;
 
   {
@@ -1325,13 +1321,12 @@ bool RecoveryOracle::has_known_exception_handler_use_redis(
     stringStream cs;
     assert(methods != NULL, "sanity check");
     for (int index = begin_index; index <= end_index; index++) {
-      current_mh = methods->at(index);
-      assert(current_mh.not_null(), "sanity check!");
+      current_method = methods->at(index);
       current_bci = bcis->at(index);
 
       cs.print("%d:%s:",
           current_bci,
-          current_mh->name_and_sig_as_C_string());
+          current_method->name_and_sig_as_C_string());
 
       for (int i=0; i<length; i++) {
         KlassHandle klass (THREAD,
@@ -1355,7 +1350,7 @@ bool RecoveryOracle::has_known_exception_handler_use_redis(
           }
 
           known_exception_type = klass;
-          handler_method = current_mh;
+          handler_method = current_method;
           handler_bci = current_bci;
           handler_index = index;
           return true;
@@ -1368,14 +1363,14 @@ bool RecoveryOracle::has_known_exception_handler_use_redis(
       }
 
       if (UseInduced) {
-        fast_exception_handler_bci_and_caught_klass_use_induced(current_mh, current_bci,
+        fast_exception_handler_bci_and_caught_klass_use_induced(current_method, current_bci,
             known_exception_type, handler_bci, THREAD);
         if (HAS_PENDING_EXCEPTION) {
           ShouldNotReachHere();
           CLEAR_PENDING_EXCEPTION;
         }
         if (known_exception_type.not_null()) {
-          handler_method = current_mh;
+          handler_method = current_method;
           handler_index = index;
           return true;
         }
@@ -1390,15 +1385,15 @@ bool RecoveryOracle::has_known_exception_handler_use_redis(
 bool RecoveryOracle::has_known_exception_handler_use_stack(
        int begin_index,
        int end_index,
-       GrowableArray<methodHandle>* methods,
+       GrowableArray<Method*>* methods,
        GrowableArray<int>* bcis,
-       methodHandle top_method,
+       Method* top_method,
        KlassHandle &known_exception_type,
-       methodHandle &handler_method,
+       Method* &handler_method,
        int &handler_bci,
        int &handler_index,
        TRAPS
-    ){
+    ) {
   ResourceMark rm(THREAD);
 
   JavaThread* thread = (JavaThread*)THREAD;
@@ -1411,7 +1406,7 @@ bool RecoveryOracle::has_known_exception_handler_use_stack(
 
   CheckedExceptionElement* table = top_method->checked_exceptions_start();
 
-  methodHandle current_mh = methodHandle(thread, NULL);
+  Method* current_method = NULL;
   int current_bci = -1;
 
   if ((TraceRuntimeRecovery & TRACE_USE_STACK) != 0) {
@@ -1423,13 +1418,12 @@ bool RecoveryOracle::has_known_exception_handler_use_stack(
   KlassHandle cause_ex_klass (thread, thread->runtime_recovery_state()->last_checked_exception()->klass());
 
   for (int index=begin_index; index <= end_index; index++) {
-    current_mh = methods->at(index);
-    assert(current_mh.not_null(), "sanity check");
+    current_method = methods->at(index);
 
     current_bci = bcis->at(index);
 
     if ((TraceRuntimeRecovery & TRACE_USE_STACK) != 0) {
-      tty->print_cr("Use Stack: %d %s@%d", index, current_mh->name_and_sig_as_C_string(), current_bci);
+      tty->print_cr("Use Stack: %d %s@%d", index, current_method->name_and_sig_as_C_string(), current_bci);
     }
 
     for (int i=0; i<ce_length; i++) {
@@ -1452,7 +1446,7 @@ bool RecoveryOracle::has_known_exception_handler_use_stack(
         continue;
       }
 
-      current_bci = Method::fast_exception_handler_bci_for(current_mh, klass, current_bci, THREAD);
+      current_bci = Method::fast_exception_handler_bci_for(current_method, klass, current_bci, THREAD);
 
       if (HAS_PENDING_EXCEPTION) {
         // TODO
@@ -1460,10 +1454,10 @@ bool RecoveryOracle::has_known_exception_handler_use_stack(
         CLEAR_PENDING_EXCEPTION;
       }
 
-      if (current_bci != -1 ){
+      if (current_bci != -1 ) {
         known_exception_type = klass;
         handler_bci = current_bci;
-        handler_method = current_mh;
+        handler_method = current_method;
         handler_index = index;
 
         if ((TraceRuntimeRecovery & TRACE_USE_STACK) != 0) {
@@ -1483,43 +1477,41 @@ bool RecoveryOracle::has_known_exception_handler_use_stack(
 bool RecoveryOracle::has_known_exception_handler_force_throwable(
        int begin_index,
        int end_index,
-       GrowableArray<methodHandle>* methods,
+       GrowableArray<Method*>* methods,
        GrowableArray<int>* bcis,
-       methodHandle top_method,
+       Method* top_method,
        KlassHandle &known_exception_type,
-       methodHandle &handler_method,
+       Method* &handler_method,
        int &handler_bci,
        int &handler_index,
        TRAPS
-    ){
+    ) {
   ResourceMark rm(THREAD);
 
   JavaThread* thread = (JavaThread*)THREAD;
 
-  methodHandle current_mh;
+  Method* current_method;
   int current_bci = -1;
 
-  assert(top_method.not_null(), "sanity check");
-  if((TraceRuntimeRecovery & TRACE_USE_STACK) != 0) {
+  if ((TraceRuntimeRecovery & TRACE_USE_STACK) != 0) {
     tty->print_cr("Top Method: %s", top_method->name_and_sig_as_C_string());
   }
 
   int methods_length = methods->length();
   KlassHandle null_handle(THREAD, (Klass*)NULL);
   for (int index=begin_index; index <= end_index; index++) {
-    current_mh = methods->at(index);
-    assert(current_mh.not_null(), "sanity check");
+    current_method = methods->at(index);
     current_bci = bcis->at(index);
 
     if ((TraceRuntimeRecovery & TRACE_USE_STACK) != 0) {
       ResourceMark rm(THREAD);
-      tty->print_cr("Force Throwable: %d %s@%d", index, current_mh->name_and_sig_as_C_string(), current_bci);
+      tty->print_cr("Force Throwable: %d %s@%d", index, current_method->name_and_sig_as_C_string(), current_bci);
     }
 
     KlassHandle caught_klass(THREAD, (Klass*)NULL);
     int current_handler_bci = -1;
     fast_exception_handler_bci_and_caught_klass_for(
-        current_mh, null_handle, current_bci,
+        current_method, null_handle, current_bci,
         caught_klass, current_handler_bci,
         true, THREAD);
 
@@ -1529,24 +1521,23 @@ bool RecoveryOracle::has_known_exception_handler_force_throwable(
       CLEAR_PENDING_EXCEPTION;
     }
 
-    if (caught_klass.is_null()){
+    if (caught_klass.is_null()) {
       continue; // a finally block
     }
 
     assert(caught_klass.not_null(), "sanity check");
 
-    if (current_handler_bci != -1 ){
+    if (current_handler_bci != -1 ) {
       assert(has_string_void_init(caught_klass), "sanity check!");
       known_exception_type = caught_klass;
       handler_bci = current_handler_bci;
-      handler_method = current_mh;
+      handler_method = current_method;
       handler_index = index;
 
       assert(caught_klass.not_null(), "sanity check");
-      assert(handler_method.not_null(), "sanity check");
       assert(known_exception_type.not_null(), "sanity check");
 
-      if((TraceRuntimeRecovery & TRACE_USE_STACK) != 0){
+      if ((TraceRuntimeRecovery & TRACE_USE_STACK) != 0) {
         ResourceMark rm(THREAD);
         tty->print_cr("Handler: %s <> %s@%d#%s",
             top_method->name_and_sig_as_C_string(),
@@ -1564,7 +1555,7 @@ bool RecoveryOracle::has_known_exception_handler_force_throwable(
 
 
 
-void RecoveryOracle::fill_stack(JavaThread* thread, GrowableArray<methodHandle>* methods, GrowableArray<int>* bcis, int max_depth, int max_frame_depth){
+void RecoveryOracle::fill_stack(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, int max_depth, int max_frame_depth) {
   int frame_count = 0;
   int total_count = 0;
 
@@ -1624,7 +1615,7 @@ void RecoveryOracle::fill_stack(JavaThread* thread, GrowableArray<methodHandle>*
     }
 
     if (current_method->is_hidden()) {
-      if (skip_hidden){
+      if (skip_hidden) {
         continue;
       }
     }
@@ -1639,16 +1630,12 @@ void RecoveryOracle::fill_stack(JavaThread* thread, GrowableArray<methodHandle>*
 //      }
 //    }
 
-    methodHandle current_mh(thread, current_method);
-
-    assert(current_mh.not_null(), "sanity check");
-
-    if((TraceRuntimeRecovery & TRACE_FILL_STACK) != 0){
+    if ((TraceRuntimeRecovery & TRACE_FILL_STACK) != 0) {
       ResourceMark rm(thread);
       tty->print_cr("Fill Stack: %d. %s@%d", total_count, current_method->name_and_sig_as_C_string(), current_bci);
     }
 
-    methods->append(current_mh);
+    methods->append(current_method);
     bcis->append(current_bci);
 
     total_count++;
@@ -1657,18 +1644,18 @@ void RecoveryOracle::fill_stack(JavaThread* thread, GrowableArray<methodHandle>*
   if (total_count > 0) {
     HandleMark hm(thread);
     assert(methods->length() > 0, "sanity check");
-    methodHandle current_mh = methods->at(0);
-    if (!current_mh->is_native()) {
+    Method* current_method = methods->at(0);
+    if (!current_method->is_native()) {
       int current_bci = bcis->at(0);
 
-      Bytecodes::Code java_code = current_mh->java_code_at(current_bci);
+      Bytecodes::Code java_code = current_method->java_code_at(current_bci);
       if (Bytecodes::is_invoke(java_code)) {
-        Bytecode_invoke bi(current_mh, current_bci);
-        current_mh = bi.static_target(thread);
+        Bytecode_invoke bi(current_method, current_bci);
+        current_method = bi.static_target(thread)();
 
-        if((TraceRuntimeRecovery & TRACE_FILL_STACK) != 0){
+        if ((TraceRuntimeRecovery & TRACE_FILL_STACK) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("Fill Stack: -1. %s@UNKNOWN", current_mh->name_and_sig_as_C_string());
+          tty->print_cr("Fill Stack: -1. %s@UNKNOWN", current_method->name_and_sig_as_C_string());
         }
       } // end of is_invoke
     }
@@ -1682,16 +1669,16 @@ void RecoveryOracle::fill_stack(JavaThread* thread, GrowableArray<methodHandle>*
 void RecoveryOracle::query_known_exception_handler(
         Handle cause_exception,
         KlassHandle &known_exception_type,
-        methodHandle &handler_method,
+        Method* &handler_method,
         int &handler_bci,
         int &handler_index,
         TRAPS
-      ){
+      ) {
   JavaThread* thread = (JavaThread*)THREAD;
 
   ResourceMark rm(thread);
 
-  GrowableArray<methodHandle>* methods = new GrowableArray<methodHandle>(20);
+  GrowableArray<Method*>* methods = new GrowableArray<Method*>(20);
   GrowableArray<int>* bcis = new GrowableArray<int>(20);
 
   fill_stack(thread, methods, bcis);
@@ -1699,38 +1686,37 @@ void RecoveryOracle::query_known_exception_handler(
   query_known_exception_handler(methods, bcis, cause_exception, known_exception_type, handler_method, handler_bci, handler_bci, CHECK);
 }
 void RecoveryOracle::query_known_exception_handler(
-        GrowableArray<methodHandle>* methods,
+        GrowableArray<Method*>* methods,
         GrowableArray<int>* bcis,
         Handle cause_exception,
         KlassHandle &known_exception_type,
-        methodHandle &handler_method,
+        Method* &handler_method,
         int &handler_bci,
         int &handler_index,
         TRAPS
-    ){
+    ) {
   JavaThread* thread = (JavaThread*) THREAD;
 
   int length = methods->length();
   assert(bcis->length() == length, "sanity check");
   for (int index = 0; index < length; index++) {
-    methodHandle current_mh = methods->at(index);
-    assert(current_mh.not_null(), "sanity check");
+    Method* current_method = methods->at(index);
     int current_bci = bcis->at(index);
 
-    int c_length = current_mh->checked_exceptions_length();
+    int c_length = current_method->checked_exceptions_length();
 
     if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
       ResourceMark rm(THREAD);
       //tty->print_cr("Query Begin: %d/%d", index, length);
       tty->print_cr("Query Begin: %s@%d#%d",
-          current_mh->name_and_sig_as_C_string(),
+          current_method->name_and_sig_as_C_string(),
           current_bci,
           c_length);
     }
 
-    //if(length > 0){
-      if(has_known_exception_handler(index+1, methods->length(), methods, bcis,
-            current_mh, known_exception_type, handler_method, handler_bci, handler_index, THREAD)){
+    //if (length > 0) {
+      if (has_known_exception_handler(index+1, methods->length(), methods, bcis,
+            current_method, known_exception_type, handler_method, handler_bci, handler_index, THREAD)) {
         return;
       }
 
@@ -1738,7 +1724,7 @@ void RecoveryOracle::query_known_exception_handler(
       ResourceMark rm(THREAD);
       tty->print_cr("Query End: %d/%d", index, length);
       //tty->print_cr("Query: %s@%d#%d",
-      //    current_mh->name_and_sig_as_C_string(),
+      //    current_method->name_and_sig_as_C_string(),
       //    current_bci,
       //    c_length);
     }
@@ -1749,11 +1735,11 @@ void RecoveryOracle::query_known_exception_handler(
 bool RecoveryOracle::has_known_exception_handler(
     int begin_index,
     int end_index,
-    GrowableArray<methodHandle>* methods,
+    GrowableArray<Method*>* methods,
     GrowableArray<int>* bcis,
-    methodHandle top_method,
+    Method* top_method,
     KlassHandle &known_exception_type,
-    methodHandle &handler_method,
+    Method* &handler_method,
     int &handler_bci,
     int &handler_index,
     TRAPS) {
@@ -1792,7 +1778,7 @@ bool RecoveryOracle::has_known_exception_handler(
 }
 
 
-void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableArray<methodHandle>* methods,
+void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableArray<Method*>* methods,
       GrowableArray<int>* bcis, RecoveryAction* action) {
   HandleMark hm(thread);
 
@@ -1802,31 +1788,31 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
   assert(max_depth >= 0, "sanity check");
   assert(methods->length()>0, "sanity check");
 
-  methodHandle top_mh = methods->at(0);
+  Method* top_method = methods->at(0);
 
-  if (top_mh->is_native()) {
+  if (top_method->is_native()) {
     // currently we do not want run_jpf_in_native
     // Clear last checked exception and make a re-try 
     //
 
     bool is_reflection_at_top = false;
 
-    if (top_mh->name()->equals("invoke0")) {
-      if (top_mh->method_holder()->name()->equals("sun/reflect/NativeMethodAccessorImpl")) {
+    if (top_method->name()->equals("invoke0")) {
+      if (top_method->method_holder()->name()->equals("sun/reflect/NativeMethodAccessorImpl")) {
         is_reflection_at_top = true;
 
 #ifdef ASSERT
         assert(max_depth >= 3, "sanity check");
         assert(methods->length() >= 3, "sanity check");
-        methodHandle second_mh = methods->at(1);
-        assert(second_mh->name()->equals("invoke"), "sanity check");
-        assert(second_mh->method_holder() == top_mh->method_holder(), "sanity check");
-        methodHandle third_mh = methods->at(2);
-        assert(third_mh->name()->equals("invoke"), "sanity check");
-        assert(third_mh->method_holder()->name()->equals("sun/reflect/DelegatingMethodAccessorImpl"), "sanity check");
-        methodHandle forth_mh = methods->at(3);
-        assert(forth_mh->name()->equals("invoke"), "sanity check");
-        assert(forth_mh->method_holder()->name()->equals("java/lang/reflect/Method"), "sanity check");
+        Method* second_method = methods->at(1);
+        assert(second_method->name()->equals("invoke"), "sanity check");
+        assert(second_method->method_holder() == top_method->method_holder(), "sanity check");
+        Method* third_method = methods->at(2);
+        assert(third_method->name()->equals("invoke"), "sanity check");
+        assert(third_method->method_holder()->name()->equals("sun/reflect/DelegatingMethodAccessorImpl"), "sanity check");
+        Method* forth_method = methods->at(3);
+        assert(forth_method->name()->equals("invoke"), "sanity check");
+        assert(forth_method->method_holder()->name()->equals("java/lang/reflect/Method"), "sanity check");
 #endif
       }
     }
@@ -1894,16 +1880,16 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
 
     assert(index >=0 && index <= final_max_depth, "sanity check");
 
-    methodHandle current_mh = methods->at(index);
+    Method* current_method = methods->at(index);
     int current_bci = bcis->at(index);
 
-    assert(!current_mh->is_native(), "sanity check");
+    assert(!current_method->is_native(), "sanity check");
 
-    Bytecodes::Code java_code = current_mh->java_code_at(current_bci);
+    Bytecodes::Code java_code = current_method->java_code_at(current_bci);
 
     assert(Bytecodes::is_invoke(java_code), "sanity check");
 
-    Bytecode_invoke bi(current_mh, current_bci);
+    Bytecode_invoke bi(current_method, current_bci);
 
     action->set_recovery_type(_early_return);
     action->set_early_return_offset(index);
@@ -1917,7 +1903,7 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
           index,
           type2name(bi.result_type()),
           action->early_return_size_of_parameters(),
-          current_mh->name_and_sig_as_C_string(),
+          current_method->name_and_sig_as_C_string(),
           current_bci,
           bi.static_target(thread)->name_and_sig_as_C_string()
           );
@@ -1969,8 +1955,6 @@ objArrayOop RecoveryOracle::run_jpf_with_exception(JavaThread* thread, Handle ex
     tty->print_cr("Cannot find method run ([Ljava/lang/Object;)[Ljava/lang/Object;");
     return NULL;
   }
-
-  methodHandle run_method_h(thread, run_method);
 
   objArrayOop data = load_stack_data(thread, exception, max_depth);
 
@@ -2166,8 +2150,8 @@ objArrayOop RecoveryOracle::load_stack_data(JavaThread* thread, Handle exception
 
             bool stop_loading = true;
             if (stack_depth == 0) {
-              methodHandle mh (thread, jvf->method());
-              if (is_sun_reflect_NativeMethodAccessorImpl(mh)) {
+              Method* method = jvf->method();
+              if (is_sun_reflect_NativeMethodAccessorImpl(method)) {
                 stop_loading = false;
               }
             }
