@@ -61,6 +61,8 @@
 #include "runtime/interfaceSupport.hpp"
 #include "runtime/javaCalls.hpp"
 #include "runtime/sharedRuntime.hpp"
+#include "runtime/recoveryOracle.hpp"
+#include "runtime/runtimeRecoveryState.hpp"
 #include "runtime/signature.hpp"
 #include "runtime/threadCritical.hpp"
 #include "runtime/vframe.hpp"
@@ -1061,6 +1063,60 @@ JRT_ENTRY_NO_ASYNC(address, OptoRuntime::handle_exception_C_helper(JavaThread* t
   address handler_address = NULL;
 
   Handle exception(thread, thread->exception_oop());
+
+  RuntimeRecoveryState* rrs = thread->runtime_recovery_state();
+  if (rrs->is_earlyret_pending()) {
+    // Handle this in vframeArray.cpp
+    if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+      tty->print_cr("Detected a pending earlyret in compiler.");
+    }
+    deoptimize_caller_frame(thread);
+  } else if (!rrs->is_in_recovery() && !RecoveryOracle::quick_cannot_recover_check(thread, exception)) {
+    // handle recovery when unpacking in deoptimization
+    if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+      tty->print_cr("Detected an interesting exception in compiler.");
+    }
+    deoptimize_caller_frame(thread);
+
+//#define false
+//    RecoveryMark recm(thread);
+//    RecoveryAction action(thread, &exception);
+////    tty->print_cr("Begin recover in compiler");
+//    RecoveryOracle::recover(thread, &action);
+//
+//    if (action.can_error_transformation()) { // fresh recovery action: error transformation
+//      Handle new_exception = action.allocate_target_exception(thread, exception);
+//      exception = new_exception;
+//
+//      // we finish a recovery, reset the state
+//      rrs->reset_runtime_recovery_state();
+//      // TODO if we transformed the exception, we can safely avoid double check.
+//      //rrs->set_last_check_top_frame_id(thread->last_frame().id());
+//    } else if (action.can_early_return()) { // fresh recovery action: early return
+//      rrs->set_earlyret_pending(); // set we already know here
+//
+//      int early_ret_offset = action.early_return_offset();
+//      BasicType early_ret_type = action.early_return_type();
+//
+//      jvalue val;
+//      val.j = 0L;
+//
+//      rrs->set_earlyret_value(val, as_TosState(early_ret_type));
+//
+//      rrs->set_earlyret_result_type(early_ret_type);
+//      rrs->set_earlyret_offset(early_ret_offset);
+//
+//      if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+//        tty->print_cr("Setup pending earlyret in compiler: offset=%d, return type=%s", early_ret_offset, type2name(early_ret_type));
+//      }
+//
+//      // We need de-optimize the caller frame
+//      // as now we can only return into in interpreter.
+//      deoptimize_caller_frame(thread);
+//    }
+//#endif
+  }
+
   address pc = thread->exception_pc();
 
   // Clear out the exception oop and pc since looking up an

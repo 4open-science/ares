@@ -51,6 +51,8 @@
 #include "runtime/java.hpp"
 #include "runtime/jfieldIDWorkaround.hpp"
 #include "runtime/osThread.hpp"
+#include "runtime/recoveryOracle.hpp"
+#include "runtime/runtimeRecoveryState.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/stubRoutines.hpp"
 #include "runtime/synchronizer.hpp"
@@ -381,6 +383,305 @@ IRT_ENTRY(void, InterpreterRuntime::throw_ClassCastException(
   THROW_MSG(vmSymbols::java_lang_ClassCastException(), message);
 IRT_END
 
+// Find recovery handler before clear expression stack
+IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread* thread, oopDesc* exception))
+  assert(!thread->has_pending_exception(), "sanity check");
+
+  Handle             h_exception(thread, exception);
+  methodHandle       h_method   (thread, method(thread));
+  int                current_bci = bci(thread);
+
+  RuntimeRecoveryState* rrs = thread->runtime_recovery_state();
+
+  if (!rrs->is_in_recovery()) {
+    if (h_exception.not_null() && rrs->last_checked_exception() != NULL
+        && h_exception() != rrs->last_checked_exception()) {
+      RecoveryMark recm(thread);
+      // a cascaded exception occurs inside finnaly block
+      rrs->reset_runtime_recovery_state(); // we finish a recovery
+
+      assert(!rrs->is_earlyret_pending(), "sanity check");
+    }
+  }
+
+  if (rrs->is_earlyret_pending()) { // we have a pending recovery action
+    if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+      ResourceMark rm(thread);
+      tty->print_cr("Detected pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
+          rrs->earlyret_offset(),
+          type2name(rrs->earlyret_result_type()),
+          rrs->earlyret_size_of_parameters());
+    }
+
+    assert(!rrs->is_in_recovery(), "recursive recovery");
+    assert(h_exception.not_null(), "sanity check");
+    assert(rrs->last_checked_exception() != NULL, "sanity check");
+    assert(h_exception->klass()->name() == vmSymbols::java_lang_reflect_InvocationTargetException()
+        || rrs->last_checked_exception() == h_exception(), "sanity check");
+
+    // Put a mark any way
+    RecoveryMark recm(thread);
+
+    if (rrs->make_earlyret_now()) {
+      assert(rrs->earlyret_offset() == 0, "sanity check");
+      assert(!h_method->is_native(), "sanity check");
+
+      BasicType early_ret_type = rrs->earlyret_result_type();
+
+      int earlyret_size_of_parameters = rrs->earlyret_size_of_parameters();
+
+      // TODO we must make a early return now
+      // In rethrow_exception_entry, the expression stack is cleared.
+      // Therefore, we cannot make a early from callee into current stack frame
+      address current_bcp = h_method->bcp_from(current_bci);
+      assert(Bytecodes::is_invoke(h_method->java_code_at(current_bci)), "sanity check");
+      Bytecode_invoke bi(h_method, current_bci);
+      assert(bi.result_type() == early_ret_type, "sanity check");
+      int length = Bytecodes::length_at(h_method(), current_bcp);
+      address next_bcp = h_method->code_base() + current_bci + length;
+      assert(h_method->contains(next_bcp), "must have next byte code instruction!");
+
+      if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+        ResourceMark rm(THREAD);
+        tty->print_cr("InterpreterRuntime::recover_handler_for_exception Ignore exception when returning from %s into %s. BCI in caller is %d",
+            bi.static_target(thread)->name_and_sig_as_C_string(),
+            h_method->name_and_sig_as_C_string(),
+            current_bci);
+        tty->print_cr("%d %s\n%d %s",
+            current_bci,
+            Bytecodes::name(Bytecodes::code_at(h_method(), current_bcp)),
+            current_bci + length,
+            Bytecodes::name(Bytecodes::code_at(h_method(), next_bcp))
+            );
+      }
+
+      // TODO has no need to set early_return_pending
+      set_bcp_and_mdp(next_bcp, thread);
+      thread->set_vm_result(h_exception());
+
+      rrs->reset_runtime_recovery_state(); // we finish a recovery
+
+      TosState ret_tos = as_TosState(early_ret_type);
+
+      if (ret_tos == btos
+          || ret_tos == ctos
+          || ret_tos == stos) {
+        ret_tos = itos;
+      }
+
+      address dispatch_next_addr = Interpreter::dispatch_table(ret_tos)[*next_bcp];
+
+      rrs->set_earlyret_dispatch_next(dispatch_next_addr);
+
+      return (address)((size_t)earlyret_size_of_parameters);
+    }
+
+    assert(rrs->earlyret_offset() > 0, "sanity check");
+    //rrs->decrease_earlyret_offset();
+    // we handle it again in exception_handler_for_exception
+  } else if (!rrs->is_in_recovery()) {
+    if(!RecoveryOracle::quick_cannot_recover_check(thread, h_exception)) {
+      RecoveryMark recm(thread);
+      RecoveryAction action(thread, &h_exception);
+
+      if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+        ResourceMark rm(thread);
+        tty->print_cr("Checking pending exception in interpreter");
+      }
+
+      RecoveryOracle::recover(thread, &action);
+
+      if (action.can_error_transformation()) { // fresh recovery action: error transformation
+        Handle new_exception = action.allocate_target_exception(thread, h_exception);
+        h_exception = new_exception;
+
+        // we finish a recovery, reset the state
+        rrs->reset_runtime_recovery_state();
+        // TODO if we transformed the exception, we can safely avoid double check.
+        //rrs->set_last_check_top_frame_id(thread->last_frame().id());
+      } else if (action.can_early_return()) { // fresh recovery action: early return
+
+        int early_ret_offset = action.early_return_offset();
+        BasicType early_ret_type = action.early_return_type();
+        int earlyret_size_of_parameters = action.early_return_size_of_parameters();
+
+        if (early_ret_offset == 0) { // recover it here
+          assert(!h_method->is_native(), "sanity check");
+          // TODO we must make a early return now
+          // In rethrow_exception_entry, the expression stack is cleared.
+          // Therefore, we cannot make a early from callee into current stack frame
+          address current_bcp = h_method->bcp_from(current_bci);
+          assert(Bytecodes::is_invoke(h_method->java_code_at(current_bci)), "sanity check");
+          Bytecode_invoke bi(h_method, current_bci);
+          assert(bi.result_type() == early_ret_type, "sanity check");
+          int length = Bytecodes::length_at(h_method(), current_bcp);
+          address next_bcp = h_method->code_base() + current_bci + length;
+          assert(h_method->contains(next_bcp), "must have next byte code instruction!");
+          if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+            ResourceMark rm(THREAD);
+            tty->print_cr("InterpreterRuntime::recover_handler_for_exception Ignore exception when returning from %s into %s. BCI in caller is %d",
+                bi.static_target(thread)->name_and_sig_as_C_string(),
+                h_method->name_and_sig_as_C_string(),
+                current_bci);
+            tty->print_cr("%d %s\n%d %s",
+                current_bci,
+                Bytecodes::name(Bytecodes::code_at(h_method(), current_bcp)),
+                current_bci + length,
+                Bytecodes::name(Bytecodes::code_at(h_method(), next_bcp))
+                );
+          }
+
+          // TODO has no need to set early_return_pending
+          set_bcp_and_mdp(next_bcp, thread);
+          thread->set_vm_result(h_exception());
+
+          rrs->reset_runtime_recovery_state(); // we finish a recovery
+
+          TosState ret_tos = as_TosState(early_ret_type);
+
+          if (ret_tos == btos
+              || ret_tos == ctos
+              || ret_tos == stos) {
+            ret_tos = itos;
+          }
+
+          address dispatch_next_addr = Interpreter::dispatch_table(ret_tos)[*next_bcp];
+
+          rrs->set_earlyret_dispatch_next(dispatch_next_addr);
+
+          return (address)((size_t)earlyret_size_of_parameters);
+        } // end of immediately early return
+
+        // setup earlyret state
+        rrs->set_earlyret_pending();
+        jvalue val;
+        val.j = 0L;
+
+        rrs->set_earlyret_value(val, as_TosState(early_ret_type));
+
+        rrs->set_earlyret_result_type(early_ret_type);
+        rrs->set_earlyret_offset(early_ret_offset);
+
+        rrs->set_earlyret_size_of_parameters(earlyret_size_of_parameters);
+
+        if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+          ResourceMark rm(thread);
+          tty->print_cr("Setup pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
+              early_ret_offset,
+              type2name(early_ret_type),
+              earlyret_size_of_parameters);
+        }
+
+        // TODO let the exception_handler_for_exception to remove this frame
+      } else {
+        // TODO We fail to recover
+        // We need a way to avoid double check unrecoverable exception
+        // Cache last checked exception
+      }
+    } else { // not in recovery but also not recoverable
+      // XXX
+    }
+  } else { // in a recovery
+    if ((TraceRuntimeRecovery & TRACE_RECURSIVE) != 0) {
+      ResourceMark rm(THREAD);
+      tty->print_cr("We found another exception during recovery an exception.");
+      java_lang_Throwable::print(h_exception, tty);
+      tty->cr();
+    }
+  }
+
+  // set back exception
+  thread->set_vm_result(h_exception());
+
+  assert(((size_t)Interpreter::rethrow_exception_entry())>255, "sanity check");
+  assert(!thread->has_pending_exception(), "sanity check");
+  // Note that this entry is not used
+  return Interpreter::rethrow_exception_entry();
+IRT_END
+
+IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_implicit_null_pointer_exception(JavaThread* thread))
+//  methodHandle       h_method   (thread, method(thread));
+//
+//  if (h_method->is_native()) {
+//    return NULL;
+//  }
+//
+//  Handle h_exception = Exceptions::new_exception(thread, vmSymbols::java_lang_NullPointerException(), NULL);
+//  int                current_bci = bci(thread);
+//
+//  Bytecodes::Code current_code = h_method->java_code_at(current_bci);
+//
+//  tty->print_cr("expression_stack_size = %d", expression_stack_size);
+//  tty->print_cr("current code = %d", current_code);
+//
+//  if ((current_code == Bytecodes::_invokevirtual
+//        || current_code == Bytecodes::_invokespecial
+//        || current_code == Bytecodes::_invokeinterface)
+//      && expression_stack_size != 0) { // there must be the receiver, or the expression stack has been cleared.
+//    RuntimeRecoveryState* rrs = thread->runtime_recovery_state();
+//
+//    if (!rrs->is_in_recovery() && !RecoveryOracle::quick_cannot_recover_check(thread, h_exception)) {
+//      RecoveryMark recm(thread);
+//      RecoveryAction action(thread, &h_exception);
+//
+//      RecoveryOracle::recover(thread, &action);
+//
+//      if (action.can_early_return()) { // fresh recovery action: early return
+//        int early_ret_offset = action.early_return_offset();
+//        BasicType early_ret_type = action.early_return_type();
+//        int earlyret_size_of_parameters = action.early_return_size_of_parameters();
+//
+//        tty->print_cr("size of parameters = %d", earlyret_size_of_parameters);
+//
+//        if (early_ret_offset == 0 && expression_stack_size == earlyret_size_of_parameters) {
+//          address current_bcp = h_method->bcp_from(current_bci);
+//          assert(Bytecodes::is_invoke(h_method->java_code_at(current_bci)), "sanity check");
+//          Bytecode_invoke bi(h_method, current_bci);
+//          assert(bi.result_type() == early_ret_type, "sanity check");
+//          int length = Bytecodes::length_at(h_method(), current_bcp);
+//          address next_bcp = h_method->code_base() + current_bci + length;
+//          assert(h_method->contains(next_bcp), "must have next byte code instruction!");
+//          if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+//            ResourceMark rm(THREAD);
+//            tty->print_cr("InterpreterRuntime::exception_handler_for_exception: Ignore exception when returning from %s into %s. BCI in caller is %d",
+//                bi.static_target(thread)->name_and_sig_as_C_string(),
+//                h_method->name_and_sig_as_C_string(),
+//                current_bci);
+//            tty->print_cr("%d %s\n%d %s",
+//                current_bci,
+//                Bytecodes::name(Bytecodes::code_at(h_method(), current_bcp)),
+//                current_bci + length,
+//                Bytecodes::name(Bytecodes::code_at(h_method(), next_bcp))
+//                );
+//          } // end of TraceRuntimeRecovery
+//
+//          // TODO has no need to set early_return_pending
+//          set_bcp_and_mdp(next_bcp, thread);
+//          thread->set_vm_result(h_exception());
+//
+//          rrs->reset_runtime_recovery_state(); // we finish a recovery
+//
+//          TosState ret_tos = as_TosState(early_ret_type);
+//
+//          if (ret_tos == btos || ret_tos == ctos || ret_tos == stos) {
+//            ret_tos = itos;
+//          }
+//
+//          address dispatch_next_addr = Interpreter::dispatch_table(ret_tos)[*next_bcp];
+//          rrs->set_earlyret_dispatch_next(dispatch_next_addr);
+//          return dispatch_next_addr;
+//        } // immediate early return
+//      } // early return
+//    } // end of not in_recovery
+//  } // end of invoke
+//
+//  tty->print_cr("implicit null pointer exception handler");
+
+  return NULL;
+IRT_END
+
+
+
 // exception_handler_for_exception(...) returns the continuation address,
 // the exception oop (via TLS) and sets the bci/bcp for the continuation.
 // The exception oop is returned to make sure it is preserved over GC (it
@@ -427,6 +728,146 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
 #else
     return Interpreter::remove_activation_entry();
 #endif
+  }
+
+  // TODO: handle IMPLICIT exception here
+  // TODO: only handle invoke instruction here
+  if (h_exception.not_null() && !h_method->is_native()) {
+    Bytecodes::Code current_code = h_method->java_code_at(current_bci);
+
+    // TODO: Currently, we have no idea know about the expression stack depth at a given bci.
+    // Therefore, we use the max one as a approximation.
+    // If the size of parameters of the invoked callee is exactly the same as the max stack size,
+    // then we can safely do a immediate early return of the uncalled callee here
+    // and continue to execute the next instruction.
+    int expression_stack_size = h_method->verifier_max_stack();
+
+    if ((current_code == Bytecodes::_invokevirtual
+        || current_code == Bytecodes::_invokespecial
+        || current_code == Bytecodes::_invokeinterface)) {
+      RuntimeRecoveryState* rrs = thread->runtime_recovery_state();
+
+      if (!rrs->is_in_recovery()) {
+        if (rrs->last_checked_exception() != NULL
+            && h_exception() == rrs->last_checked_exception()) {
+          // Do nothing
+          if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+            tty->print_cr("InterpreterRuntime::exception_handler_for_exception: avoid duplicated checking.");
+          }
+        } else {
+          if(!RecoveryOracle::quick_cannot_recover_check(thread, h_exception)) {
+            RecoveryMark recm(thread);
+            RecoveryAction action(thread, &h_exception);
+
+            if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
+              ResourceMark rm(thread);
+              tty->print_cr("Checking pending exception in exception_handler_for_exception in interpreter");
+            }
+
+            RecoveryOracle::recover(thread, &action);
+
+            if (action.can_error_transformation()) { // fresh recovery action: error transformation
+              Handle new_exception = action.allocate_target_exception(thread, h_exception);
+              h_exception = new_exception;
+
+              // we finish a recovery, reset the state
+              rrs->reset_runtime_recovery_state();
+              // TODO if we transformed the exception, we can safely avoid double check.
+              //rrs->set_last_check_top_frame_id(thread->last_frame().id());
+            } else if (action.can_early_return()) { // fresh recovery action: early return
+
+              int early_ret_offset = action.early_return_offset();
+              BasicType early_ret_type = action.early_return_type();
+              int earlyret_size_of_parameters = action.early_return_size_of_parameters();
+
+              if (early_ret_offset == 0 && expression_stack_size != earlyret_size_of_parameters) {
+                // we cannot recover when the expression stack size is not exactly matched with
+                // If the expression stack has been cleared, it is zero
+                if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+                  tty->print_cr("InterpreterRuntime::exception_handler_for_exception: expression stack size is %d, but size of parameters is %d",
+                      expression_stack_size, earlyret_size_of_parameters);
+                } // end of TraceRuntimeRecovery
+
+                // let rethrow_exception_entry to retry
+                rrs->reset_runtime_recovery_state();
+              } else if (early_ret_offset == 0) { // recover it here
+                if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+                  tty->print_cr("InterpreterRuntime::exception_handler_for_exception: expression stack size is %d and size of parameters is %d, make an immediate early return",
+                      expression_stack_size, earlyret_size_of_parameters);
+                } // end of TraceRuntimeRecovery
+                assert(!h_method->is_native(), "sanity check");
+                // TODO we must make a early return now
+                // In rethrow_exception_entry, the expression stack is cleared.
+                // Therefore, we cannot make a early from callee into current stack frame
+                address current_bcp = h_method->bcp_from(current_bci);
+                assert(Bytecodes::is_invoke(h_method->java_code_at(current_bci)), "sanity check");
+                Bytecode_invoke bi(h_method, current_bci);
+                assert(bi.result_type() == early_ret_type, "sanity check");
+                int length = Bytecodes::length_at(h_method(), current_bcp);
+                address next_bcp = h_method->code_base() + current_bci + length;
+                assert(h_method->contains(next_bcp), "must have next byte code instruction!");
+                if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+                  ResourceMark rm(THREAD);
+                  tty->print_cr("InterpreterRuntime::exception_handler_for_exception: Ignore exception when returning from %s into %s. BCI in caller is %d",
+                      bi.static_target(thread)->name_and_sig_as_C_string(),
+                      h_method->name_and_sig_as_C_string(),
+                      current_bci);
+                  tty->print_cr("%d %s\n%d %s",
+                      current_bci,
+                      Bytecodes::name(Bytecodes::code_at(h_method(), current_bcp)),
+                      current_bci + length,
+                      Bytecodes::name(Bytecodes::code_at(h_method(), next_bcp))
+                      );
+                } // end of TraceRuntimeRecovery
+
+                // TODO has no need to set early_return_pending
+                set_bcp_and_mdp(next_bcp, thread);
+                thread->set_vm_result(h_exception());
+
+                rrs->reset_runtime_recovery_state(); // we finish a recovery
+
+                TosState ret_tos = as_TosState(early_ret_type);
+
+                if (ret_tos == btos
+                    || ret_tos == ctos
+                    || ret_tos == stos) {
+                  ret_tos = itos;
+                }
+
+                address dispatch_next_addr = Interpreter::dispatch_table(ret_tos)[*next_bcp];
+                rrs->set_earlyret_dispatch_next(dispatch_next_addr);
+                return dispatch_next_addr;
+              } else {// end of immediately early return
+                // setup earlyret state
+                rrs->set_earlyret_pending();
+                jvalue val;
+                val.j = 0L;
+
+                rrs->set_earlyret_value(val, as_TosState(early_ret_type));
+
+                rrs->set_earlyret_result_type(early_ret_type);
+                rrs->set_earlyret_offset(early_ret_offset);
+
+                rrs->set_earlyret_size_of_parameters(earlyret_size_of_parameters);
+
+                if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+                  ResourceMark rm(thread);
+                  tty->print_cr("Setup pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
+                      early_ret_offset,
+                      type2name(early_ret_type),
+                      earlyret_size_of_parameters);
+                }
+                // TODO let the exception_handler_for_exception to remove this frame
+              }
+            } else {
+              // TODO We fail to recover
+              // We need a way to avoid double check unrecoverable exception
+              // Cache last checked exception
+            }
+          }
+        } // not checked, first checking this exception
+      } // end of in_recovery
+    }
   }
 
   do {
@@ -498,6 +939,9 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
 #ifndef CC_INTERP
     continuation = Interpreter::remove_activation_entry();
 #endif
+    if (thread->runtime_recovery_state()->is_earlyret_pending()) {
+      thread->runtime_recovery_state()->decrease_earlyret_offset();
+    }
     // Count this for compilation purposes
     h_method->interpreter_throwout_increment(THREAD);
   } else {

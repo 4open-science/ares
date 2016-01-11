@@ -224,6 +224,13 @@ void Method::mask_for(int bci, InterpreterOopMap* mask) {
                         myThread->is_ConcurrentGC_thread() ||
                         myThread->is_GC_task_thread();
 
+  if (myThread->is_Java_thread()) {
+    JavaThread* jt = (JavaThread*) myThread;
+    if (jt->runtime_recovery_state()->is_in_recovery()) {
+      has_capability = true;
+    }
+  }
+
   if (!has_capability) {
     if (!VerifyStack && !VerifyLastFrame) {
       // verify stack calls this outside VM thread

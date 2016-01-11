@@ -1477,6 +1477,9 @@ void JavaThread::initialize() {
   }
 #endif /* PRODUCT */
 
+  RuntimeRecoveryState* rrs = new RuntimeRecoveryState(this);
+  set_runtime_recovery_state(rrs);
+
   set_thread_profiler(NULL);
   if (FlatProfiler::is_active()) {
     // This is where we would decide to either give each thread it's own profiler
@@ -1625,6 +1628,9 @@ JavaThread::~JavaThread() {
     } while (deferred->length() != 0);
     delete deferred;
   }
+
+  assert(_runtime_recovery_state != NULL, "sanity check!");
+  delete _runtime_recovery_state;
 
   // All Java related clean up happens in exit
   ThreadSafepointState::destroy(this);
@@ -2786,6 +2792,10 @@ void JavaThread::oops_do(OopClosure* f, CLDClosure* cld_f, CodeBlobClosure* cf) 
 
   if (jvmti_thread_state() != NULL) {
     jvmti_thread_state()->oops_do(f);
+  }
+
+  if (runtime_recovery_state() != NULL) {
+    runtime_recovery_state()->oops_do(f);
   }
 }
 

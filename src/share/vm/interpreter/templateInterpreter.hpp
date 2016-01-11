@@ -116,6 +116,7 @@ class TemplateInterpreter: public AbstractInterpreter {
 #endif // !PRODUCT
   static EntryPoint _return_entry[number_of_return_entries];    // entry points to return to from a call
   static EntryPoint _earlyret_entry;                            // entry point to return early from a call
+  static EntryPoint _earlyret_entry_for_recovery;               // entry point to return early from a call for recovery
   static EntryPoint _deopt_entry[number_of_deopt_entries];      // entry points to return to from a deoptimization
   static EntryPoint _continuation_entry;
   static EntryPoint _safept_entry;
@@ -139,6 +140,7 @@ class TemplateInterpreter: public AbstractInterpreter {
  public:
 
   static address    remove_activation_early_entry(TosState state) { return _earlyret_entry.entry(state); }
+  static address    remove_activation_early_entry_for_recovery(TosState state) { return _earlyret_entry_for_recovery.entry(state); }
 #ifdef HOTSWAP
   static address    remove_activation_preserving_args_entry()   { return _remove_activation_preserving_args_entry; }
 #endif // HOTSWAP

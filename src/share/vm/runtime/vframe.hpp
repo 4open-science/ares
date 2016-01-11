@@ -276,6 +276,8 @@ class MonitorInfo : public ResourceObj {
 };
 
 class vframeStreamCommon : StackObj {
+  friend class RecoveryOracle;
+
  protected:
   // common
   frame        _frame;

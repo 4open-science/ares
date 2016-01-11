@@ -141,6 +141,7 @@ void interpreter_init() {
 StubQueue* AbstractInterpreter::_code                                       = NULL;
 bool       AbstractInterpreter::_notice_safepoints                          = false;
 address    AbstractInterpreter::_rethrow_exception_entry                    = NULL;
+address    AbstractInterpreter::_pop_exception_and_continue_entry           = NULL;
 
 address    AbstractInterpreter::_native_entry_begin                         = NULL;
 address    AbstractInterpreter::_native_entry_end                           = NULL;

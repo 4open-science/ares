@@ -516,7 +516,8 @@ address SharedRuntime::raw_exception_handler_for_return_address(JavaThread* thre
   }
   // Interpreted code
   if (Interpreter::contains(return_address)) {
-    return Interpreter::rethrow_exception_entry();
+    //return Interpreter::rethrow_exception_entry();
+    return Interpreter::pop_exception_and_continue_entry();
   }
 
   guarantee(blob == NULL || !blob->is_runtime_stub(), "caller should have skipped stub");

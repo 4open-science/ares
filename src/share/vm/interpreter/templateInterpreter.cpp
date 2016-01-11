@@ -180,6 +180,7 @@ EntryPoint TemplateInterpreter::_trace_code;
 #endif // !PRODUCT
 EntryPoint TemplateInterpreter::_return_entry[TemplateInterpreter::number_of_return_entries];
 EntryPoint TemplateInterpreter::_earlyret_entry;
+EntryPoint TemplateInterpreter::_earlyret_entry_for_recovery;
 EntryPoint TemplateInterpreter::_deopt_entry [TemplateInterpreter::number_of_deopt_entries ];
 EntryPoint TemplateInterpreter::_continuation_entry;
 EntryPoint TemplateInterpreter::_safept_entry;
@@ -281,6 +282,21 @@ void TemplateInterpreterGenerator::generate_all() {
         generate_earlyret_entry_for(ftos),
         generate_earlyret_entry_for(dtos),
         generate_earlyret_entry_for(vtos)
+      );
+  }
+
+  { CodeletMark cm(_masm, "earlyret for recovery entry points");
+    Interpreter::_earlyret_entry_for_recovery =
+      EntryPoint(
+        generate_earlyret_entry_for_recovery_for(btos),
+        generate_earlyret_entry_for_recovery_for(ctos),
+        generate_earlyret_entry_for_recovery_for(stos),
+        generate_earlyret_entry_for_recovery_for(atos),
+        generate_earlyret_entry_for_recovery_for(itos),
+        generate_earlyret_entry_for_recovery_for(ltos),
+        generate_earlyret_entry_for_recovery_for(ftos),
+        generate_earlyret_entry_for_recovery_for(dtos),
+        generate_earlyret_entry_for_recovery_for(vtos)
       );
   }
 

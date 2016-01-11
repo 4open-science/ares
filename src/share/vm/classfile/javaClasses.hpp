@@ -467,6 +467,7 @@ class java_lang_ThreadGroup : AllStatic {
 
 class java_lang_Throwable: AllStatic {
   friend class BacktraceBuilder;
+  friend class RecoveryOracle;
 
  private:
   // Offsets

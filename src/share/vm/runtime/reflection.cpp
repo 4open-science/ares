@@ -40,6 +40,7 @@
 #include "runtime/arguments.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/javaCalls.hpp"
+#include "runtime/recoveryOracle.hpp"
 #include "runtime/reflection.hpp"
 #include "runtime/reflectionUtils.hpp"
 #include "runtime/signature.hpp"
@@ -1078,7 +1079,7 @@ oop Reflection::invoke(instanceKlassHandle klass, methodHandle reflected_method,
 
   if (HAS_PENDING_EXCEPTION) {
     // Method threw an exception; wrap it in an InvocationTargetException
-    oop target_exception = PENDING_EXCEPTION;
+    Handle target_exception (THREAD, PENDING_EXCEPTION);
     CLEAR_PENDING_EXCEPTION;
     // JVMTI has already reported the pending exception
     // JVMTI internal flag reset is needed in order to report InvocationTargetException
@@ -1086,10 +1087,133 @@ oop Reflection::invoke(instanceKlassHandle klass, methodHandle reflected_method,
       JvmtiExport::clear_detected_exception((JavaThread*) THREAD);
     }
 
-    JavaCallArguments args(Handle(THREAD, target_exception));
-    THROW_ARG_0(vmSymbols::java_lang_reflect_InvocationTargetException(),
-                vmSymbols::throwable_void_signature(),
-                &args);
+    JavaThread* thread = (JavaThread*)THREAD;
+
+    RuntimeRecoveryState* rrs = thread->runtime_recovery_state();
+
+    bool rethrow_origin = true;
+
+    if (rrs->is_earlyret_pending()) {
+      if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+        ResourceMark rm(thread);
+        tty->print_cr("Detected pending earlyret in reflection: offset=%d, return type=%s, size_of_p=%d",
+            rrs->earlyret_offset(),
+            type2name(rrs->earlyret_result_type()),
+            rrs->earlyret_size_of_parameters());
+      }
+
+      assert(!rrs->is_in_recovery(), "recursive recovery");
+      assert(target_exception.not_null(), "sanity check");
+      assert(rrs->last_checked_exception() == target_exception(), "sanity check (avoid recursive recovery)");
+
+      if (rrs->make_earlyret_now()) {
+
+        // Set default result
+        result.set_jlong(0L);
+
+        rethrow_origin = false;
+
+        // Reset recovery state
+        rrs->reset_runtime_recovery_state();
+      } else {
+        rrs->decrease_earlyret_offset();
+      }
+    } else if (!rrs->is_in_recovery()) {
+      if(!RecoveryOracle::quick_cannot_recover_check(thread, target_exception)) {
+        // Put a mark any way
+        RecoveryMark recm(thread);
+
+        //tty->print_cr("Begin recover in reflection");
+        RecoveryAction action(thread, &target_exception);
+
+        action.set_top_method(&method);
+
+        RecoveryOracle::recover(thread, &action);
+
+        if (action.can_error_transformation()) { // fresh recovery action: error transformation
+          Handle new_exception = action.allocate_target_exception(thread, target_exception);
+
+          target_exception = new_exception;
+
+          // we finish a recovery, reset the state
+          rrs->reset_runtime_recovery_state();
+          // TODO if we transformed the exception, we can safely avoid double check.
+          //rrs->set_last_check_top_frame_id(thread->last_frame().id());
+        } else if (action.can_early_return()) { // fresh recovery action: early return
+
+          int early_ret_offset = action.early_return_offset();
+          BasicType early_ret_type = action.early_return_type();
+          int earlyret_size_of_parameters = action.early_return_size_of_parameters();
+
+          if (early_ret_offset == 0) { // recover it here
+            if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+              ResourceMark rm(THREAD);
+              tty->print_cr("Reflection: ignore exception when returning from %s",
+                  method->name_and_sig_as_C_string());
+            }
+
+            // Set default result
+            result.set_jlong(0L);
+
+            // Reset recovery
+            rethrow_origin = false;
+
+            rrs->reset_runtime_recovery_state();
+          } else { // end of immediately early return
+
+            // setup earlyret state
+            rrs->set_earlyret_pending();
+            jvalue val;
+            val.j = 0L;
+
+            rrs->set_earlyret_value(val, as_TosState(early_ret_type));
+
+            rrs->set_earlyret_result_type(early_ret_type);
+            rrs->set_earlyret_offset(early_ret_offset);
+
+            rrs->set_earlyret_size_of_parameters(earlyret_size_of_parameters);
+
+            if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+              ResourceMark rm(thread);
+              tty->print_cr("Setup pending earlyret in reflection: offset=%d, return type=%s, size_of_p=%d",
+                  early_ret_offset,
+                  type2name(early_ret_type),
+                  earlyret_size_of_parameters);
+            }
+
+            // TODO
+            // we must keep the original runtime exception not the InvocationTargetException
+            // to remove pending frames for early return
+            rethrow_origin = false;
+          }
+          // TODO let the exception_handler_for_exception to remove this frame
+        } else {
+          // TODO We fail to recover
+          // We need a way to avoid double check unrecoverable exception
+          // Cache last checked exception
+        }
+      } else {
+        // We cannot handle, throw it anyway
+      }
+    } else {
+      if ((TraceRuntimeRecovery & TRACE_RECURSIVE) != 0) {
+        ResourceMark rm(THREAD);
+        tty->print_cr("We found another exception during recovery an exception in reflection.");
+        java_lang_Throwable::print(target_exception, tty);
+        tty->cr();
+      }
+    }
+
+    if (rethrow_origin) {
+      JavaCallArguments args(target_exception);
+      THROW_ARG_0(vmSymbols::java_lang_reflect_InvocationTargetException(),
+          vmSymbols::throwable_void_signature(),
+          &args);
+    } else {
+      if (rtype == T_BOOLEAN || rtype == T_BYTE || rtype == T_CHAR || rtype == T_SHORT)
+        narrow((jvalue*) result.get_value_addr(), rtype, CHECK_NULL);
+      return box((jvalue*) result.get_value_addr(), rtype, CHECK_NULL);
+    }
   } else {
     if (rtype == T_BOOLEAN || rtype == T_BYTE || rtype == T_CHAR || rtype == T_SHORT)
       narrow((jvalue*) result.get_value_addr(), rtype, CHECK_NULL);

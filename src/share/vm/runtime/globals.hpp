@@ -3944,7 +3944,46 @@ class CommandLineFlags {
                                                                             \
   product_pd(bool, PreserveFramePointer,                                    \
              "Use the FP register for holding the frame pointer "           \
-             "and not as a general purpose register.")
+             "and not as a general purpose register.")                      \
+  product(bool, EnableRecovery, true,                                       \
+                  "Enable automatic runtime recovery")                      \
+  product(intx, TraceRuntimeRecovery, 0,                                    \
+          "Trace level for all kinds runtime recovery strategies")          \
+  product(bool, UseErrorTransformation, true,                               \
+          "Transform error to known exceptions first.")                     \
+  product(bool, UseEarlyReturn, true,                                       \
+          "ignore the exception and make a early return.")                  \
+  product(bool, UseRedis, false,                                            \
+          "Use redis database to query handler.")                           \
+  product(ccstr, RedisKeyPrefix, "",                                        \
+          "Prefix for creating redis key.")                                 \
+  product(bool, UseInduced, false,                                          \
+          "Use induced redis database to query handler.")                   \
+  product(bool, UseStack, true,                                             \
+          "Use stack to query handler.")                                    \
+  product(bool, UseForceThrowable, false,                                   \
+          "Make all catch-block to catch throwable.")                       \
+  product(bool, UseJPF, false,                                              \
+          "Make all catch-block to catch throwable.")                       \
+  product(bool, RuntimeExeptionOnly, true,                                  \
+          "Only transform runtime exception.")                              \
+  product(bool, TransformEscaped, true,                                     \
+          "transform escaped runtime exception.")                           \
+  product(bool, RecoverTrivial, true,                                       \
+          "Ignore trivial handler.")                                        \
+  product(bool, OnlyEarlyReturnVoid, false,                                 \
+          "We only make a early return into if the return type is void.")   \
+  product(bool, ForceEarlyReturnAt, false,                                  \
+          "Use the ForceEarlyReturnAtIndex to determine"                    \
+          "where we make a early return")                                   \
+  product(intx, ForceEarlyReturnAtIndex, 0,                                 \
+          "Where we make an early return any way")                          \
+  product(bool, IgnoreFinallyBlock, true,                                   \
+          "Treat a finally block as a non-trivial handler if true.")        \
+  product(bool, StopStackWalkingAtReflection, true,                         \
+          "Stop stack walking at reflection or JNI call")
+
+
 
 /*
  *  Macros for factoring of globals

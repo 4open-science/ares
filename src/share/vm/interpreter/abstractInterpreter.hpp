@@ -128,6 +128,7 @@ class AbstractInterpreter: AllStatic {
   static address    _slow_signature_handler;                              // the native method generic (slow) signature handler
 
   static address    _rethrow_exception_entry;                   // rethrows an activation in previous frame
+  static address    _pop_exception_and_continue_entry;          // pop exception and continue
 
   friend class      AbstractInterpreterGenerator;
   friend class              InterpreterGenerator;
@@ -158,6 +159,7 @@ class AbstractInterpreter: AllStatic {
   static address return_entry(TosState state, int length, Bytecodes::Code code) { ShouldNotReachHere(); return NULL; }
 
   static address    rethrow_exception_entry()                   { return _rethrow_exception_entry; }
+  static address    pop_exception_and_continue_entry()          { return _pop_exception_and_continue_entry; }
 
   // Activation size in words for a method that is just being called.
   // Parameters haven't been pushed so count them too.

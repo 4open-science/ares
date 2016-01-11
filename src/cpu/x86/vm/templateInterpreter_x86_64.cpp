@@ -1699,6 +1699,55 @@ int AbstractInterpreter::size_top_interpreter_activation(Method* method) {
 // Exceptions
 
 void TemplateInterpreterGenerator::generate_throw_exception() {
+  Interpreter::_pop_exception_and_continue_entry = __ pc();
+
+  __ movptr(Address(rbp, frame::interpreter_frame_last_sp_offset * wordSize), (int32_t)NULL_WORD);
+  // rax: exception
+  // rdx: return address/pc that threw exception
+  __ restore_bcp();    // r13 points to call/send
+  __ restore_locals();
+  __ reinit_heapbase();  // restore r12 as heapbase.
+
+  __ verify_oop(rax);
+  __ mov(c_rarg1, rax);
+
+  // rdx is the exception
+  __ call_VM(rdx,
+             CAST_FROM_FN_PTR(address,
+                          InterpreterRuntime::recovery_handler_for_exception),
+             c_rarg1);
+
+  Label not_cont;
+
+  __ cmpptr(rax, 256);
+  __ jcc(Assembler::greater, not_cont);
+
+
+  // XXX: We have to know the argument size
+  __ andl(rax, 0xFF);
+  __ lea(rsp, Address(rsp, rax, Address::times_8));
+
+  // set default value..
+  // see templateTable ldc
+  __ xorl(rax, rax);
+  __ xorpd(xmm0, xmm0);
+
+  __ movptr(rcx, Address(r15_thread, JavaThread::runtime_recovery_state_offset()));
+  const Address next_addr(rcx, RuntimeRecoveryState::earlyret_dispatch_next_offset());
+
+  __ movptr(rbx, next_addr);
+
+  __ jmp(rbx);
+
+  //__ stop("Should not reach here.");
+
+  __ bind(not_cont);
+
+  // rax is exception
+  __ mov(rax, rdx);
+  __ verify_oop(rax);
+
+
   // Entry point in previous activation (i.e., if the caller was
   // interpreted)
   Interpreter::_rethrow_exception_entry = __ pc();
@@ -1931,6 +1980,57 @@ address TemplateInterpreterGenerator::generate_earlyret_entry_for(TosState state
   return entry;
 } // end of ForceEarlyReturn support
 
+//
+// RuntimeRecovery: RuntimeRecoveryForceEarlyReturn
+//
+address TemplateInterpreterGenerator::generate_earlyret_entry_for_recovery_for(TosState state) {
+  address entry = __ pc();
+
+  __ restore_bcp();
+  __ restore_locals();
+  __ empty_expression_stack();
+
+
+  // __ load_earlyret_value(state);
+
+  __ movptr(rcx, Address(r15_thread, JavaThread::runtime_recovery_state_offset()));
+  const Address tos_addr(rcx, RuntimeRecoveryState::earlyret_tos_offset());
+  const Address oop_addr(rcx, RuntimeRecoveryState::earlyret_oop_offset());
+  const Address con_addr(rcx, RuntimeRecoveryState::earlyret_state_offset());
+
+
+  // TODO Now we only use default value
+  //const Address val_addr(rcx, RuntimeRecoveryState::earlyret_value_offset());
+
+  switch (state) {
+    case atos: __ movptr(rax, (int32_t)NULL_WORD); break;
+    case ltos: __ movptr(rax, 0);                  break;
+    case btos:                                     // fall through
+    case ctos:                                     // fall through
+    case stos:                                     // fall through
+    case itos: __ movl(rax, 0);                    break;
+    case ftos: __ movflt(xmm0, 0);                 break;
+    case dtos: __ movdbl(xmm0, 0);                 break;
+    case vtos: /* nothing to do */                 break;
+    default  : ShouldNotReachHere();
+  }
+
+  __ movl(tos_addr,  (int) ilgl);
+
+  // TODO Now we only use default value
+  //__ movl(val_addr,  (int32_t) NULL_WORD);
+
+  // Clear the earlyret state
+  __ movl(con_addr, RuntimeRecoveryState::earlyret_inactive);
+
+  __ remove_activation(state, rsi,
+                       false, /* throw_monitor_exception */
+                       false, /* install_monitor_exception */
+                       true); /* notify_jvmdi */
+  __ jmp(rsi);
+
+  return entry;
+} // end of RuntimeRecoveryForceEarlyReturn support
 
 //-----------------------------------------------------------------------------
 // Helper for vtos entry point generation

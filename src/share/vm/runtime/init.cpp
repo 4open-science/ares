@@ -70,7 +70,7 @@ void InlineCacheBuffer_init();
 void compilerOracle_init();
 void compilationPolicy_init();
 void compileBroker_init();
-
+void recoveryOracle_init();
 // Initialization after compiler initialization
 bool universe_post_init();  // must happen after compiler_init
 void javaClasses_init();  // must happen after vtable initialization
@@ -126,6 +126,8 @@ jint init_globals() {
   compilationPolicy_init();
   compileBroker_init();
   VMRegImpl::set_regName();
+
+  recoveryOracle_init();
 
   if (!universe_post_init()) {
     return JNI_ERR;

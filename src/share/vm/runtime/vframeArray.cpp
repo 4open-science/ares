@@ -34,6 +34,7 @@
 #include "prims/jvmtiThreadState.hpp"
 #include "runtime/handles.inline.hpp"
 #include "runtime/monitorChunk.hpp"
+#include "runtime/recoveryOracle.hpp"
 #include "runtime/sharedRuntime.hpp"
 #include "runtime/vframe.hpp"
 #include "runtime/vframeArray.hpp"
@@ -217,6 +218,22 @@ void vframeArrayElement::unpack_on_stack(int caller_actual_parameters,
   int popframe_preserved_args_size_in_words = 0;
   if (is_top_frame) {
     JvmtiThreadState *state = thread->jvmti_thread_state();
+    RuntimeRecoveryState* rrs = thread->runtime_recovery_state();
+    assert(rrs != NULL, "rrs is created in JavaThread::JavaThread");
+
+    if (rrs->is_earlyret_pending()) {
+      if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
+        tty->print_cr("Detected pending earlyret in unpack_on_stack, offset=%d, return type=%s.",
+            rrs->earlyret_offset(),
+            type2name(rrs->earlyret_result_type()));
+      }
+      assert(exec_mode == Deoptimization::Unpack_exception, "sanity check");
+
+      if (rrs->make_earlyret_now()) {
+        // caller parameters have been cleared
+        rrs->clr_earlyret_size_of_parameters();
+      }
+    }
     if (JvmtiExport::can_pop_frame() &&
         (thread->has_pending_popframe() || thread->popframe_forcing_deopt_reexecution())) {
       if (thread->has_pending_popframe()) {

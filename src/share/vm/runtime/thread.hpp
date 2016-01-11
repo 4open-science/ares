@@ -37,6 +37,7 @@
 #include "runtime/os.hpp"
 #include "runtime/osThread.hpp"
 #include "runtime/park.hpp"
+#include "runtime/runtimeRecoveryState.hpp"
 #include "runtime/safepoint.hpp"
 #include "runtime/stubRoutines.hpp"
 #include "runtime/threadLocalStorage.hpp"
@@ -59,6 +60,8 @@
 
 class ThreadSafepointState;
 class ThreadProfiler;
+
+class RuntimeRecoveryState;
 
 class JvmtiThreadState;
 class JvmtiGetLoadedClassesClosure;
@@ -856,6 +859,9 @@ class JavaThread: public Thread {
   AsyncRequests _special_runtime_exit_condition; // Enum indicating pending async. request
   oop           _pending_async_exception;
 
+  // Runtime Recovery Support
+  RuntimeRecoveryState* _runtime_recovery_state;
+
   // Safepoint support
  public:                                         // Expose _thread_state for SafeFetchInt()
   volatile JavaThreadState _thread_state;
@@ -1228,6 +1234,12 @@ class JavaThread: public Thread {
     _special_runtime_exit_condition = _async_exception;
     set_has_async_exception();
   }
+
+  void set_runtime_recovery_state(RuntimeRecoveryState* state) { _runtime_recovery_state = state; }
+
+  RuntimeRecoveryState* runtime_recovery_state() { return _runtime_recovery_state; }
+
+  static ByteSize runtime_recovery_state_offset() { return byte_offset_of(JavaThread, _runtime_recovery_state); }
 
   // Fast-locking support
   bool is_lock_owned(address adr) const;

@@ -1,3 +1,7 @@
 .hg
 .hgignore
 .hgtags
+
+build
+
+cscope.*
