@@ -1605,12 +1605,12 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
 objArrayOop RecoveryOracle::run_jpf_with_exception(JavaThread* thread, Handle exception, int &max_depth) {
   HandleMark hm(thread);
 
-  TempNewSymbol javaPlusName = SymbolTable::new_symbol("gov/nasa/jpf/JavaPlus", thread);
-  if (javaPlusName == NULL) {
-    tty->print_cr("Cannot create javaPlusName");
+  TempNewSymbol aresClassName = SymbolTable::new_symbol("gov/nasa/jpf/Ares", thread);
+  if (aresClassName == NULL) {
+    tty->print_cr("Cannot create new symbol for ");
     return NULL;
   }
-  instanceKlassHandle javaPlusKlass (thread, SystemDictionary::resolve_or_null(javaPlusName, thread));
+  instanceKlassHandle aresKlass (thread, SystemDictionary::resolve_or_null(aresClassName, thread));
   if (thread->has_pending_exception()) {
     Handle ex_h(thread, thread->pending_exception());
     ex_h.print();
@@ -1618,15 +1618,15 @@ objArrayOop RecoveryOracle::run_jpf_with_exception(JavaThread* thread, Handle ex
     return NULL;
   }
 
-  if (javaPlusKlass.is_null()) {
-    tty->print_cr("Cannot resolve gov/nasa/jpf/JavaPlus");
+  if (aresKlass.is_null()) {
+    tty->print_cr("Cannot resolve gov/nasa/jpf/Ares");
     return NULL;
   }
 
   TempNewSymbol run_name = SymbolTable::new_symbol("runDefault", thread);
   TempNewSymbol run_desc = SymbolTable::new_symbol("([Ljava/lang/Object;)[Ljava/lang/Object;", thread);
 
-  Method* run_method = javaPlusKlass->find_method(run_name, run_desc);
+  Method* run_method = aresKlass->find_method(run_name, run_desc);
 
   if (run_method == NULL) {
     tty->print_cr("Cannot find method run ([Ljava/lang/Object;)[Ljava/lang/Object;");
@@ -1649,7 +1649,7 @@ objArrayOop RecoveryOracle::run_jpf_with_exception(JavaThread* thread, Handle ex
     JavaValue result(T_ARRAY);
     JavaCallArguments args;
     args.push_oop(data_h);
-    JavaCalls::call_static(&result, javaPlusKlass, run_name, run_desc, data_h, thread);
+    JavaCalls::call_static(&result, aresKlass, run_name, run_desc, data_h, thread);
 
 
     if (thread->has_pending_exception()) {
