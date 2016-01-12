@@ -84,11 +84,6 @@ public:
 
   static Handle allocate_target_exception(JavaThread* thread, Handle origin_exception, KlassHandle target_exception_klass);
 
-  // return true if there is no handler
-  static bool error_transformation(JavaThread* thread,
-          Handle original_exception,
-          Handle &transformed_exception);
-
   static void fast_error_transformation(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
   static void fast_early_return(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action);
 

@@ -26,8 +26,7 @@ void RecoveryAction::print() {
   tty->print_cr("(%s)(%s)(%s)",
       origin_exception()->klass()->name()->as_C_string(),
       RecoveryOracle::failure_type_name(_failure_type),
-      RecoveryOracle::recovery_type_name(_recovery_type)
-      );
+      RecoveryOracle::recovery_type_name(_recovery_type));
 }
 
 Handle RecoveryAction::allocate_target_exception(JavaThread* thread, Handle origin_exception) {
@@ -61,7 +60,6 @@ const char* get_recovery_mode() {
 }
 
 void RecoveryOracle::initialize() {
-
   if (UseRedis) {
     redisContext* c = redisConnect("127.0.0.1", 6379);
     if (c != NULL && c->err) {
@@ -70,7 +68,6 @@ void RecoveryOracle::initialize() {
     }
     _context = c;
   }
-
 }
 
 // Caller should call this first before allocate a RecoveryAction
@@ -88,9 +85,7 @@ bool RecoveryOracle::quick_cannot_recover_check(JavaThread* thread, Handle excep
     return true;
   }
 
-  // TODO Deprecated RuntimeExceptionOnly option
-  if (/*RuntimeExeptionOnly && */
-      !exception->is_a(SystemDictionary::RuntimeException_klass())) {
+  if (!exception->is_a(SystemDictionary::RuntimeException_klass())) {
     return true;
   }
 
@@ -135,8 +130,7 @@ const char* RecoveryOracle::recovery_type_name(RecoveryType type) {
 bool RecoveryOracle::is_trivial_handler(KlassHandle handler_klass) {
   assert(handler_klass.not_null(), "sanity check");
 
-  return handler_klass() == SystemDictionary::Throwable_klass()
-    || handler_klass() == SystemDictionary::Exception_klass();
+  return handler_klass() == SystemDictionary::Throwable_klass() || handler_klass() == SystemDictionary::Exception_klass();
 }
 
 void RecoveryOracle::recover(JavaThread* thread, RecoveryAction* action) {
@@ -298,7 +292,8 @@ bool RecoveryOracle::has_unsafe_init(JavaThread* thread, GrowableArray<Method*>*
   return false;
 }
 
-void RecoveryOracle::determine_failure_type_and_recovery_context(JavaThread* thread, GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
+void RecoveryOracle::determine_failure_type_and_recovery_context(JavaThread* thread,
+    GrowableArray<Method*>* methods, GrowableArray<int>* bcis, RecoveryAction* action) {
   HandleMark hm(thread);
   const int methods_length = methods->length();
   KlassHandle ex_klass (thread, action->origin_exception()->klass());
@@ -588,23 +583,6 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
       Method* current_method = methods->at(index);
       int current_bci = bcis->at(index);
 
-//      if (current_method->is_native()) {
-//
-//        action->set_recovery_type(_early_return);
-//        action->set_early_return_offset(index);
-//
-//        if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
-//          ResourceMark rm(thread);
-//
-//          tty->print_cr("fast_early_return: force early return into native (index=%d, %s)",
-//              index,
-//              current_method->name_and_sig_as_C_string()
-//              );
-//        }
-//
-//        return;
-//      }
-
       if (!current_method->is_native()) {
         Bytecodes::Code java_code = current_method->java_code_at(current_bci);
 
@@ -697,33 +675,6 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
           );
     }
 
-//    if (current_method->is_native()) {
-//      action->set_recovery_type(_early_return);
-//      action->set_early_return_offset(index);
-//
-//      if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
-//        ResourceMark rm(thread);
-//
-//        tty->print_cr("fast_early_return: force early return into native (index=%d, %s)",
-//            index,
-//            current_method->name_and_sig_as_C_string()
-//            );
-//      }
-//
-//      if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
-//        ResourceMark rm(thread);
-//        tty->print_cr("(%s) early_return: (end_index=%d, index=%d, native)",
-//            action->origin_exception()->klass()->name()->as_C_string(),
-//            end_index,
-//            index);
-//      }
-//
-//      return;
-//    }
-
-
-
-
     if (!current_method->is_native()) {
       Bytecodes::Code java_code = current_method->java_code_at(current_bci);
 
@@ -794,8 +745,6 @@ void RecoveryOracle::determine_recovery_action(JavaThread* thread, GrowableArray
 
   return;
 }
-
-
 
 void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_use_induced(
     Method* method, int throw_bci,
@@ -960,274 +909,6 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
 }
 
 
-bool RecoveryOracle::error_transformation(JavaThread* thread,
-    Handle original_exception,
-    Handle &transformed_exception) {
-  if (!EnableRecovery) {
-    return false;
-  }
-
-  TRAPS = thread;
-
-  if (original_exception.is_null()) {
-    return false;
-  }
-
-  // TODO Deprecated RuntimeExceptionOnly option
-  if (/*RuntimeExeptionOnly && */
-      !original_exception->is_a(SystemDictionary::RuntimeException_klass())) {
-    return false;
-  }
-
-  if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-    ResourceMark rm(THREAD);
-    tty->print_cr("Try to recovery an exception %s", original_exception->klass()->name()->as_C_string());
-  }
-
-
-  // TODO, now we recover exceptions that 
-  // 1) no handler
-  // 2) escape a handler
-  bool do_transformation = false;
-  bool no_handler  = false;
-
-
-  ResourceMark rm(thread);
-
-  GrowableArray<Method*>* methods = new GrowableArray<Method*>(50);
-  GrowableArray<int>* bcis = new GrowableArray<int>(50);
-
-  if ((TraceRuntimeRecovery & TRACE_PRINT_STACK) != 0) {
-    tty->print_cr("Begin: Print stack trace of the original exception.");
-    java_lang_Throwable::print_stack_trace(original_exception(), tty);
-    tty->print_cr("End: Print stack trace of the original exception.");
-  }
-
-  fill_stack(thread, methods, bcis);
-
-  {
-    HandleMark hm(thread);
-
-    bool should_repeat;
-    Method* current_method = NULL;
-    Handle exception_handle = original_exception;
-    int current_throw_bci = -1;
-    int current_handler_bci = -1;
-    int current_other_throw_bci = -1;
-    int current_other_handler_bci = -1;
-    bool escaped = false;
-    KlassHandle caught_klass;
-    KlassHandle escaped_caught_klass;
-    KlassHandle null_handle;
-
-
-    int length = methods->length();
-    for (int i=0; i<length; i++) {
-      current_method = methods->at(i);
-      current_throw_bci = bcis->at(i);
-
-
-      if ((TraceRuntimeRecovery & TRACE_CHECK_ESCAPE) != 0) {
-        ResourceMark rm(thread);
-        tty->print_cr("Check Escape: %d %s@%d", i, current_method->name_and_sig_as_C_string(), current_throw_bci);
-      }
-
-      do {
-        should_repeat = false;
-        assert(exception_handle.not_null(), "sanity check!");
-        KlassHandle eh_klass(thread, exception_handle->klass());
-        // TODO save current_bci_other for double check
-        current_other_throw_bci = current_throw_bci;
-
-        assert(eh_klass.not_null(), "sanity check!");
-        fast_exception_handler_bci_and_caught_klass_for(
-            current_method, eh_klass, current_throw_bci,
-            caught_klass, current_handler_bci, false,
-            THREAD);
-        if (HAS_PENDING_EXCEPTION) {
-          exception_handle = Handle(thread, PENDING_EXCEPTION);
-          CLEAR_PENDING_EXCEPTION;
-          should_repeat = true;
-          current_throw_bci = current_handler_bci;
-        }
-
-        // Comment this check block if you want to ignore finally block
-        if (current_handler_bci != -1) {
-          if (caught_klass.is_null()) { // a finally block
-            current_handler_bci = -1;
-          }
-        }
-
-        if (current_handler_bci == -1 // not a real catch block (may be a finally block)
-            && !escaped) {
-          // TODO double check
-          // if the eh_klass is null,
-          // it will return the handler_bci immediately
-          assert(null_handle.is_null(), "sanity check!");
-          fast_exception_handler_bci_and_caught_klass_for(
-              current_method, null_handle, current_other_throw_bci,
-              escaped_caught_klass, current_other_handler_bci,
-              false, THREAD);
-          // Should not have pending exception
-          if (HAS_PENDING_EXCEPTION) {
-            tty->print_cr("WARNING: An exception occurred during error transformation preparation.");
-            CLEAR_PENDING_EXCEPTION;
-          }
-
-          // there is another handler for another kind of exception
-          if (current_other_handler_bci != -1) {
-            //if (escaped_caught_klass.not_null()) { // not a finally block
-            escaped = true;
-            //}
-          }
-        }
-      } while (should_repeat && (current_handler_bci != -1));
-
-      if (current_handler_bci >= 0 ) {
-        break;
-      }
-    }
-
-    if ((TraceRuntimeRecovery & TRACE_CHECK_ESCAPE) != 0) {
-      tty->print_cr("Finish Check Escape %d", escaped);
-    }
-
-    //  if (!escaped && 
-    //          original_exception->klass()->name() == (SystemDictionary::NullPointerException_klass())) {
-    //    escaped = true;
-    //  }
-
-    if (current_handler_bci < 0) {
-      if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-        ResourceMark rm(THREAD);
-        tty->print_cr("Try to transform an exception %s that has no handler in the stack.", original_exception->klass()->name()->as_C_string());
-      }
-      do_transformation = true;
-      no_handler = true;
-    }else if (TransformEscaped
-        && escaped) {
-      // a runtime exception that is caught by a catch block wrt Exception or Throwable
-      if (/*caught_klass.not_null() && */
-          !caught_klass->is_subtype_of(SystemDictionary::RuntimeException_klass())) {
-        if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-          ResourceMark rm(THREAD);
-          tty->print_cr("Try to transform an exception %s that escapes an error handler in the stack.", 
-              original_exception->klass()->name()->as_C_string());
-        }
-        do_transformation = true;
-      }else {
-        if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-          ResourceMark rm(THREAD);
-          tty->print_cr("Give up to transform an exception %s that has an handler [%s] in the stack.", 
-              original_exception->klass()->name()->as_C_string(),
-              caught_klass.is_null()?"any":caught_klass->name()->as_C_string());
-        }
-        // avoid duplicated checking
-        //thread->set_checked_recovering_exception(original_exception());
-      }
-    } else {
-      if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-        ResourceMark rm(THREAD);
-        tty->print_cr("Cannot transform an exception %s.",
-            original_exception->klass()->name()->as_C_string());
-        tty->print_cr("Caught klass: %s, Handler Method: %s, Handler bci: %d, Escaped: %d",
-            caught_klass.is_null()?"any":caught_klass->name()->as_C_string(),
-            current_method->name_and_sig_as_C_string(),
-            current_handler_bci,
-            escaped
-            );
-      }
-
-      // TODO
-
-      if (caught_klass() == SystemDictionary::Throwable_klass()
-          || caught_klass() == SystemDictionary::Exception_klass()) {
-        no_handler = true;
-      }
-      // avoid duplicated checking
-      //thread->set_checked_recovering_exception(original_exception());
-    }
-
-  } // end of the big lookup
-
-  if (do_transformation) {
-    KlassHandle known_exception_type;
-    Method* handler_method;
-    int bci = -1;
-    int index = -1;
-    RecoveryOracle::query_known_exception_handler(
-          methods,
-          bcis,
-          original_exception,
-          known_exception_type,
-          handler_method,
-          bci,
-          index,
-          THREAD
-        );
-
-    if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-      ResourceMark rm(THREAD);
-      tty->print_cr("Now we begin to transform an exception %s.",
-          original_exception->klass()->name()->as_C_string()
-          );
-    }
-
-    if (handler_method != NULL) {
-      ResourceMark rm(THREAD);
-      stringStream ss;
-      ss.print("Exception transformation: %s -> %s.",
-          original_exception->klass()->name()->as_C_string(),
-          known_exception_type->name()->as_C_string()
-          );
-
-
-      assert(has_string_void_init(known_exception_type), "sanity check!");
-
-      if ((TraceRuntimeRecovery & TRACE_TRANSFORMING) != 0) {
-        ResourceMark rm(THREAD);
-        tty->print_cr("Transforming an exception %s to %s w.r.t. %s@%d %s.",
-          original_exception->klass()->name()->as_C_string(),
-          known_exception_type->name()->as_C_string(),
-          handler_method->name_and_sig_as_C_string(),
-          bci,
-          get_recovery_mode()
-          );
-      }
-
-      Handle new_exception = Exceptions::new_exception(thread,
-          known_exception_type->name(),
-          ss.as_string(),
-          original_exception,
-          Handle(THREAD, known_exception_type->class_loader()),
-          Handle(THREAD, known_exception_type->protection_domain()));
-
-
-      transformed_exception = new_exception;
-
-      run_jpf_with_exception(thread, transformed_exception, index);
-
-    } else {
-      if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-        ResourceMark rm(THREAD);
-        tty->print_cr("We failed to transform an exception %s as there is no handler.",
-            original_exception->klass()->name()->as_C_string()
-            );
-      }
-      //thread->set_checked_recovering_exception(original_exception());
-      // TODO there is a handler, but we cannot recover it
-      no_handler = true;
-    }
-  }
-
-  if (no_handler) {
-    // TODO
-  }
-
-  //
-  return no_handler;
-}
-
 // return false when reply is nil, empty list, empty string
 bool RecoveryOracle::redis_contains_key_common(const char* keys_command, TRAPS) {
 
@@ -1298,8 +979,7 @@ bool RecoveryOracle::has_known_exception_handler_use_redis(
        Method* &handler_method,
        int &handler_bci,
        int &handler_index,
-       TRAPS
-    ) {
+       TRAPS) {
 
   JavaThread* thread = (JavaThread*)THREAD;
 
@@ -1392,8 +1072,7 @@ bool RecoveryOracle::has_known_exception_handler_use_stack(
        Method* &handler_method,
        int &handler_bci,
        int &handler_index,
-       TRAPS
-    ) {
+       TRAPS) {
   ResourceMark rm(THREAD);
 
   JavaThread* thread = (JavaThread*)THREAD;
@@ -1484,8 +1163,7 @@ bool RecoveryOracle::has_known_exception_handler_force_throwable(
        Method* &handler_method,
        int &handler_bci,
        int &handler_index,
-       TRAPS
-    ) {
+       TRAPS) {
   ResourceMark rm(THREAD);
 
   JavaThread* thread = (JavaThread*)THREAD;
@@ -1672,8 +1350,7 @@ void RecoveryOracle::query_known_exception_handler(
         Method* &handler_method,
         int &handler_bci,
         int &handler_index,
-        TRAPS
-      ) {
+        TRAPS) {
   JavaThread* thread = (JavaThread*)THREAD;
 
   ResourceMark rm(thread);
@@ -1685,6 +1362,7 @@ void RecoveryOracle::query_known_exception_handler(
 
   query_known_exception_handler(methods, bcis, cause_exception, known_exception_type, handler_method, handler_bci, handler_bci, CHECK);
 }
+
 void RecoveryOracle::query_known_exception_handler(
         GrowableArray<Method*>* methods,
         GrowableArray<int>* bcis,
@@ -1693,8 +1371,7 @@ void RecoveryOracle::query_known_exception_handler(
         Method* &handler_method,
         int &handler_bci,
         int &handler_index,
-        TRAPS
-    ) {
+        TRAPS) {
   JavaThread* thread = (JavaThread*) THREAD;
 
   int length = methods->length();

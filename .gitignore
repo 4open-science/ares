@@ -4,4 +4,9 @@
 
 build
 
+# cscope
 cscope.*
+
+# vim
+*.swp
+

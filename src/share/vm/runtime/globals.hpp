@@ -3953,6 +3953,8 @@ class CommandLineFlags {
           "Transform error to known exceptions first.")                     \
   product(bool, UseEarlyReturn, true,                                       \
           "ignore the exception and make a early return.")                  \
+  product(bool, OnlyEarlyReturnVoid, false,                                 \
+          "We only make a early return into if the return type is void.")   \
   product(bool, UseRedis, false,                                            \
           "Use redis database to query handler.")                           \
   product(ccstr, RedisKeyPrefix, "",                                        \
@@ -3964,24 +3966,16 @@ class CommandLineFlags {
   product(bool, UseForceThrowable, false,                                   \
           "Make all catch-block to catch throwable.")                       \
   product(bool, UseJPF, false,                                              \
-          "Make all catch-block to catch throwable.")                       \
-  product(bool, RuntimeExeptionOnly, true,                                  \
-          "Only transform runtime exception.")                              \
-  product(bool, TransformEscaped, true,                                     \
-          "transform escaped runtime exception.")                           \
+          "Use JPF to evaluate and rank error handlers.")                   \
   product(bool, RecoverTrivial, true,                                       \
           "Ignore trivial handler.")                                        \
-  product(bool, OnlyEarlyReturnVoid, false,                                 \
-          "We only make a early return into if the return type is void.")   \
   product(bool, ForceEarlyReturnAt, false,                                  \
           "Use the ForceEarlyReturnAtIndex to determine"                    \
           "where we make a early return")                                   \
   product(intx, ForceEarlyReturnAtIndex, 0,                                 \
           "Where we make an early return any way")                          \
   product(bool, IgnoreFinallyBlock, true,                                   \
-          "Treat a finally block as a non-trivial handler if true.")        \
-  product(bool, StopStackWalkingAtReflection, true,                         \
-          "Stop stack walking at reflection or JNI call")
+          "Treat a finally block as a non-trivial handler if true.")
 
 
 
