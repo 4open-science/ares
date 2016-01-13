@@ -407,7 +407,7 @@ IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread
   if (rrs->is_earlyret_pending()) { // we have a pending recovery action
     if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
       ResourceMark rm(thread);
-      tty->print_cr("Detected pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
+      tty->print_cr("[Ares] recovery_handler_for_exception: detect a pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
           rrs->earlyret_offset(),
           type2name(rrs->earlyret_result_type()),
           rrs->earlyret_size_of_parameters());
@@ -443,11 +443,11 @@ IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread
 
       if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
         ResourceMark rm(THREAD);
-        tty->print_cr("InterpreterRuntime::recover_handler_for_exception Ignore exception when returning from %s into %s. BCI in caller is %d",
+        tty->print_cr("[Ares] recover_handler_for_exception: ignore exception when returning from %s into %s. bci in caller is %d",
             bi.static_target(thread)->name_and_sig_as_C_string(),
             h_method->name_and_sig_as_C_string(),
             current_bci);
-        tty->print_cr("%d %s\n%d %s",
+        tty->print_cr("[Ares] %d %s\n%d %s",
             current_bci,
             Bytecodes::name(Bytecodes::code_at(h_method(), current_bcp)),
             current_bci + length,
@@ -486,7 +486,7 @@ IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread
 
       if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
         ResourceMark rm(thread);
-        tty->print_cr("Checking pending exception in interpreter");
+        tty->print_cr("[Ares] recover_handler_for_exception: checking pending exception in interpreter");
       }
 
       RecoveryOracle::recover(thread, &action);
@@ -519,11 +519,11 @@ IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread
           assert(h_method->contains(next_bcp), "must have next byte code instruction!");
           if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
             ResourceMark rm(THREAD);
-            tty->print_cr("InterpreterRuntime::recover_handler_for_exception Ignore exception when returning from %s into %s. BCI in caller is %d",
+            tty->print_cr("[Ares] recover_handler_for_exception: ignore exception when returning from %s into %s. bci in caller is %d",
                 bi.static_target(thread)->name_and_sig_as_C_string(),
                 h_method->name_and_sig_as_C_string(),
                 current_bci);
-            tty->print_cr("%d %s\n%d %s",
+            tty->print_cr("[Ares] %d %s\n%d %s",
                 current_bci,
                 Bytecodes::name(Bytecodes::code_at(h_method(), current_bcp)),
                 current_bci + length,
@@ -566,7 +566,7 @@ IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread
 
         if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("Setup pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
+          tty->print_cr("[Ares] recovery_handler_for_exception: setup pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
               early_ret_offset,
               type2name(early_ret_type),
               earlyret_size_of_parameters);
@@ -584,7 +584,7 @@ IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread
   } else { // in a recovery
     if ((TraceRuntimeRecovery & TRACE_RECURSIVE) != 0) {
       ResourceMark rm(THREAD);
-      tty->print_cr("We found another exception during recovery an exception.");
+      tty->print_cr("[Ares] recovery_handler_for_exception: we found another exception during recovery an exception.");
       java_lang_Throwable::print(h_exception, tty);
       tty->cr();
     }
@@ -752,7 +752,7 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
             && h_exception() == rrs->last_checked_exception()) {
           // Do nothing
           if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-            tty->print_cr("InterpreterRuntime::exception_handler_for_exception: avoid duplicated checking.");
+            tty->print_cr("[Ares] exception_handler_for_exception: avoid duplicated checking.");
           }
         } else {
           if(!RecoveryOracle::quick_cannot_recover_check(thread, h_exception)) {
@@ -761,7 +761,7 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
 
             if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
               ResourceMark rm(thread);
-              tty->print_cr("Checking pending exception in exception_handler_for_exception in interpreter");
+              tty->print_cr("[Ares] exception_handler_for_exception: checking pending exception");
             }
 
             RecoveryOracle::recover(thread, &action);
@@ -784,7 +784,7 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
                 // we cannot recover when the expression stack size is not exactly matched with
                 // If the expression stack has been cleared, it is zero
                 if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
-                  tty->print_cr("InterpreterRuntime::exception_handler_for_exception: expression stack size is %d, but size of parameters is %d",
+                  tty->print_cr("[Ares] exception_handler_for_exception: expression stack size is %d, but size of parameters is %d",
                       expression_stack_size, earlyret_size_of_parameters);
                 } // end of TraceRuntimeRecovery
 
@@ -792,7 +792,7 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
                 rrs->reset_runtime_recovery_state();
               } else if (early_ret_offset == 0) { // recover it here
                 if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
-                  tty->print_cr("InterpreterRuntime::exception_handler_for_exception: expression stack size is %d and size of parameters is %d, make an immediate early return",
+                  tty->print_cr("[Ares] exception_handler_for_exception: expression stack size is %d and size of parameters is %d, make an immediate early return",
                       expression_stack_size, earlyret_size_of_parameters);
                 } // end of TraceRuntimeRecovery
                 assert(!h_method->is_native(), "sanity check");
@@ -808,11 +808,11 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
                 assert(h_method->contains(next_bcp), "must have next byte code instruction!");
                 if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
                   ResourceMark rm(THREAD);
-                  tty->print_cr("InterpreterRuntime::exception_handler_for_exception: Ignore exception when returning from %s into %s. BCI in caller is %d",
+                  tty->print_cr("[Ares] exception_handler_for_exception: ignore exception when returning from %s into %s. BCI in caller is %d",
                       bi.static_target(thread)->name_and_sig_as_C_string(),
                       h_method->name_and_sig_as_C_string(),
                       current_bci);
-                  tty->print_cr("%d %s\n%d %s",
+                  tty->print_cr("[Ares] %d %s\n%d %s",
                       current_bci,
                       Bytecodes::name(Bytecodes::code_at(h_method(), current_bcp)),
                       current_bci + length,
@@ -852,7 +852,7 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
 
                 if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
                   ResourceMark rm(thread);
-                  tty->print_cr("Setup pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
+                  tty->print_cr("[Ares] exception_handler_for_exception: setup pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
                       early_ret_offset,
                       type2name(early_ret_type),
                       earlyret_size_of_parameters);

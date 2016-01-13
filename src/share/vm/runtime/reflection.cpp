@@ -1096,7 +1096,7 @@ oop Reflection::invoke(instanceKlassHandle klass, methodHandle reflected_method,
     if (rrs->is_earlyret_pending()) {
       if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
         ResourceMark rm(thread);
-        tty->print_cr("Detected pending earlyret in reflection: offset=%d, return type=%s, size_of_p=%d",
+        tty->print_cr("[Ares] reflection: detected pending earlyret: offset=%d, return type=%s, size_of_p=%d",
             rrs->earlyret_offset(),
             type2name(rrs->earlyret_result_type()),
             rrs->earlyret_size_of_parameters());
@@ -1150,7 +1150,7 @@ oop Reflection::invoke(instanceKlassHandle klass, methodHandle reflected_method,
           if (early_ret_offset == 0) { // recover it here
             if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
               ResourceMark rm(THREAD);
-              tty->print_cr("Reflection: ignore exception when returning from %s",
+              tty->print_cr("[Ares] reflection: ignore exception when returning from %s",
                   method->name_and_sig_as_C_string());
             }
 
@@ -1177,7 +1177,7 @@ oop Reflection::invoke(instanceKlassHandle klass, methodHandle reflected_method,
 
             if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
               ResourceMark rm(thread);
-              tty->print_cr("Setup pending earlyret in reflection: offset=%d, return type=%s, size_of_p=%d",
+              tty->print_cr("[Ares] reflection: setup pending earlyret: offset=%d, return type=%s, size_of_p=%d",
                   early_ret_offset,
                   type2name(early_ret_type),
                   earlyret_size_of_parameters);
@@ -1200,7 +1200,7 @@ oop Reflection::invoke(instanceKlassHandle klass, methodHandle reflected_method,
     } else {
       if ((TraceRuntimeRecovery & TRACE_RECURSIVE) != 0) {
         ResourceMark rm(THREAD);
-        tty->print_cr("We found another exception during recovery an exception in reflection.");
+        tty->print_cr("[Ares] reflection: We found another exception during recovery an exception.");
         java_lang_Throwable::print(target_exception, tty);
         tty->cr();
       }
