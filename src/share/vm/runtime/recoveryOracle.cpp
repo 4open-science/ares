@@ -1322,13 +1322,10 @@ void RecoveryOracle::fill_stack(JavaThread* thread, GrowableArray<Method*>* meth
         Bytecode_invoke bi(current_method, current_bci);
         current_method = bi.static_target(thread)();
 
-        methods->insert_before(0, current_method);
-        bcis->insert_before(0, -1);
-
-        //if ((TraceRuntimeRecovery & TRACE_FILL_STACK) != 0) {
-        //  ResourceMark rm(thread);
-        //  tty->print_cr("[Ares] fill_stack:: -1. %s@UNKNOWN", current_method->name_and_sig_as_C_string());
-        //}
+        if ((TraceRuntimeRecovery & TRACE_FILL_STACK) != 0) {
+          ResourceMark rm(thread);
+          tty->print_cr("[Ares] fill_stack:: -1. %s@UNKNOWN", current_method->name_and_sig_as_C_string());
+        }
       } // end of is_invoke
     } // end of not native
   }
