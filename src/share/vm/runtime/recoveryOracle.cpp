@@ -144,7 +144,7 @@ void RecoveryOracle::recover(JavaThread* thread, RecoveryAction* action) {
   if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
     timer.stop();
     if (can_recover(action)) {
-      tty->print_cr("[Ares] recovery time: %lxms", timer.milliseconds());
+      tty->print_cr("[Ares] recovery time: %dms", (int)timer.milliseconds());
     }
   }
 }
@@ -184,6 +184,12 @@ void RecoveryOracle::do_recover(JavaThread* thread, RecoveryAction* action) {
   // 0). Collect stack
   GrowableArray<Method*>* methods = new GrowableArray<Method*>(50);
   GrowableArray<int>* bcis = new GrowableArray<int>(50);
+
+  // TODO: there are two cases of an incomplete top.
+  // 1) return in to reflection (see reflection.cpp) <==> action.has_top_method(). The actual complete top must be a native frame.
+  // 2) NPE happens during invoking an instance method where the stack frame is partially built. The actual complete top must NOT be a native method.
+  // These two cases are exclusive.
+  // has_incomplete_top is for the second case
   fill_stack(thread, methods, bcis);
 
   if (methods->length() == 0) {
@@ -193,7 +199,6 @@ void RecoveryOracle::do_recover(JavaThread* thread, RecoveryAction* action) {
     }
     return;
   }
-
 
   // 1). Determine failure type and recovery context
   determine_failure_type_and_recovery_context(thread, methods, bcis, action);
@@ -625,9 +630,11 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
     tty->print_cr("[Ares] fast_early_return: end_index=%d, OnlyEarlyReturnVoid=%d", end_index, OnlyEarlyReturnVoid);
   }
 
+  int dropped_extra = 0;
+
   if (action->has_top_method()) {
     Method* current_method = action->top_method();
-
+    dropped_extra = 1; // incomplete top frame
     if (OnlyEarlyReturnVoid) {
       if (current_method->result_type() == T_VOID) {
         action->set_recovery_type(_early_return);
@@ -636,7 +643,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
         action->set_early_return_size_of_parameters(current_method->size_of_parameters());
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, top method)",
+          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top method)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
@@ -652,7 +659,7 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
 
       if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
         ResourceMark rm(thread);
-        tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, top method)",
+        tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top method)",
             action->origin_exception()->klass()->name()->as_C_string(),
             failure_type_name(action->failure_type()),
             end_index,
@@ -684,6 +691,12 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
       Bytecodes::Code java_code = current_method->java_code_at(current_bci);
 
       if (Bytecodes::is_invoke(java_code)) {
+
+        if (index == 0) {
+          assert(dropped_extra == 0, "two exclusive cases of  incomplete top frames");
+          dropped_extra = 1;
+        }
+
         Bytecode_invoke bi(current_method, current_bci);
 
         if (OnlyEarlyReturnVoid && bi.result_type() != T_VOID) {
@@ -709,12 +722,13 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=%d, rettype=%s)",
+          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=%d, rettype=%s, dropped=%d)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
               index,
-              type2name(bi.result_type()));
+              type2name(bi.result_type()),
+              index + dropped_extra);
         }
 
         return;
@@ -753,7 +767,7 @@ void RecoveryOracle::determine_recovery_action(JavaThread* thread, GrowableArray
 
 void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_use_induced(
     Method* method, int throw_bci,
-    KlassHandle &caught_klass, 
+    KlassHandle &caught_klass,
     int &handler_bci,
     TRAPS) {
   // exception table holds quadruple entries of the form (beg_bci, end_bci, handler_bci, klass_index)
@@ -1740,14 +1754,12 @@ objArrayOop RecoveryOracle::load_stack_data(JavaThread* thread, Handle exception
               int nof_expressions = expressions->size();
 
               if ((TraceRuntimeRecovery & TRACE_LOAD_STACK) != 0) {
-                tty->print_cr("[Ares] load_stack_data: %s nof_locals=%d nof_expressions=%d max_locals=%d max_stack=%d",
-                    jvf->method()->name_and_sig_as_C_string(),
+                tty->print_cr("[Ares] load_stack_data: %s, depth=%d, nof_locals=%d, nof_expressions=%d, max_locals=%d, max_stack=%d.",
+                    jvf->method()->name_and_sig_as_C_string(), stack_depth,
                     nof_locals, nof_expressions,
                     jvf->method()->max_locals(), jvf->method()->max_stack());
                 jvf->fr().print_on(tty);
               }
-
-
 
               int slot_size = nof_locals + nof_expressions;
 
@@ -1759,32 +1771,40 @@ objArrayOop RecoveryOracle::load_stack_data(JavaThread* thread, Handle exception
 
               int slot = 0;
               for (; slot<locals->size(); slot++) {
-                //tty->print_cr("locals %d %s", slot, type2name(locals->at(slot)->type()));
+                // tty->print_cr("locals %d %s", slot, type2name(locals->at(slot)->type()));
                 if (locals->at(slot)->type() == T_OBJECT) {
                   oop o = locals->obj_at(slot)();
 
                   if (o != NULL) {
                     objectSlots->obj_at_put(slot, o);
                   }
-                } else {
+                } else if (locals->at(slot)->type() == T_INT) {
                   longSlots->long_at_put(slot, locals->at(slot)->get_int());
+                } else if (locals->at(slot)->type() == T_CONFLICT) {
+                  // Null word
+                } else {
+                  ShouldNotReachHere();
                 }
-                //tty->print_cr("%d", slot);
+                // tty->print_cr("%d", slot);
               }
 
               for (int offset= 0; offset<expressions->size(); offset++) {
-                //tty->print_cr("expressions %d %s", slot, type2name(expressions->at(slot)->type()));
+                // tty->print_cr("expressions %d %s", slot, type2name(expressions->at(offset)->type()));
                 if (expressions->at(offset)->type() == T_OBJECT) {
                   oop o = expressions->obj_at(offset)();
 
                   if (o != NULL) {
                     objectSlots->obj_at_put(slot, o);
                   }
-                } else {
+                } else if (expressions->at(offset)->type() == T_INT) {
                   longSlots->long_at_put(slot, expressions->at(offset)->get_int());
+                } else if (expressions->at(offset)->type() == T_CONFLICT) {
+                  // Null word
+                } else {
+                  ShouldNotReachHere();
                 }
                 slot++;
-                //tty->print_cr("%d", slot);
+                // tty->print_cr("%d", slot);
               }
 
 

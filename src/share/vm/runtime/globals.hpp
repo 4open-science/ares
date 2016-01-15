@@ -3953,7 +3953,7 @@ class CommandLineFlags {
           "Transform error to known exceptions first.")                     \
   product(bool, UseEarlyReturn, true,                                       \
           "ignore the exception and make a early return.")                  \
-  product(bool, OnlyEarlyReturnVoid, false,                                 \
+  product(bool, OnlyEarlyReturnVoid, true,                                  \
           "We only make a early return into if the return type is void.")   \
   product(bool, UseRedis, false,                                            \
           "Use redis database to query handler.")                           \
