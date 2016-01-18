@@ -161,6 +161,10 @@ void RecoveryOracle::recover(JavaThread* thread, RecoveryAction* action) {
       tty->print_cr("[Ares] [%04d] recovery time: %dms", next_recovered_count(), (int)timer.milliseconds());
     }
   }
+
+  if (!can_recover(action)) {
+    thread->runtime_recovery_state()->set_last_checked_exception(NULL);
+  }
 }
 
 bool RecoveryOracle::is_sun_reflect_NativeMethodAccessorImpl(Method* method) {
