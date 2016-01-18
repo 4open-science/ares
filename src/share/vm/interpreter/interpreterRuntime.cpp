@@ -732,7 +732,7 @@ IRT_ENTRY(address, InterpreterRuntime::exception_handler_for_exception(JavaThrea
 
   // TODO: handle IMPLICIT exception here
   // TODO: only handle invoke instruction here
-  if (h_exception.not_null() && !h_method->is_native()) {
+  if (h_exception.not_null() && !h_method->is_native() && false) {
     Bytecodes::Code current_code = h_method->java_code_at(current_bci);
 
     // TODO: Currently, we have no idea know about the expression stack depth at a given bci.

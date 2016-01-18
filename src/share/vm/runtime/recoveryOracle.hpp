@@ -56,7 +56,11 @@ public:
 private:
   static redisContext* _context;
 
+  static volatile jint  _recovered_count;
+
 public:
+
+  static jint next_recovered_count();
 
   static const char* failure_type_name(FailureType);
   static const char* recovery_type_name(RecoveryType);

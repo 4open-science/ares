@@ -40,8 +40,22 @@ void recoveryOracle_init() {
 
 redisContext* RecoveryOracle::_context = NULL;
 
+volatile jint RecoveryOracle::_recovered_count = 0;
+
 redisContext* RecoveryOracle::context() {
   return _context;
+}
+
+jint RecoveryOracle::next_recovered_count() {
+  jint old_count;
+  jint new_count;
+
+  do {
+    old_count = _recovered_count;
+    new_count = old_count + 1;
+  } while ( old_count != Atomic::cmpxchg(new_count, &_recovered_count, old_count));
+
+  return old_count;
 }
 
 const char* get_recovery_mode() {
@@ -144,7 +158,7 @@ void RecoveryOracle::recover(JavaThread* thread, RecoveryAction* action) {
   if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
     timer.stop();
     if (can_recover(action)) {
-      tty->print_cr("[Ares] recovery time: %dms", (int)timer.milliseconds());
+      tty->print_cr("[Ares] [%04d] recovery time: %dms", next_recovered_count(), (int)timer.milliseconds());
     }
   }
 }
