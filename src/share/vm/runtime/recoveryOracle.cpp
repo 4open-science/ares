@@ -404,6 +404,18 @@ bool RecoveryOracle::can_recover(RecoveryAction* action) {
 
 Handle RecoveryOracle::allocate_target_exception(JavaThread* thread, Handle origin_exception, KlassHandle target_exception_klass) {
   ResourceMark rm(thread);
+
+  bool ignore_super_class = false;
+  if (ignore_super_class && origin_exception->is_a(target_exception_klass())) {
+    if ((TraceRuntimeRecovery & TRACE_TRANSFORMING) != 0) {
+      ResourceMark rm(thread);
+      tty->print_cr("[Ares] Ignore transforming an exception, as %s is a subclass of %s...",
+          origin_exception->klass()->name()->as_C_string(),
+          target_exception_klass->name()->as_C_string());
+    }
+    return origin_exception;
+  }
+
   stringStream ss;
   ss.print("Exception transformation: %s -> %s.",
       origin_exception->klass()->name()->as_C_string(),
@@ -414,7 +426,7 @@ Handle RecoveryOracle::allocate_target_exception(JavaThread* thread, Handle orig
 
   if ((TraceRuntimeRecovery & TRACE_TRANSFORMING) != 0) {
     ResourceMark rm(thread);
-    tty->print_cr("Transforming an exception %s to %s..",
+    tty->print_cr("[Ares] Transforming an exception %s to %s..",
         origin_exception->klass()->name()->as_C_string(),
         target_exception_klass->name()->as_C_string());
   }
@@ -453,7 +465,7 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
     current_method = action->top_method();
     const int ce_length = current_method->checked_exceptions_length();
 
-    if (ce_length > 0) {
+    if ((ce_length > 0 && UseStack) || UseForceThrowable) {
       if (has_known_exception_handler(0, end_index, methods, bcis,
             current_method, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
         // TODO
@@ -507,7 +519,7 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
       {
         const int ce_length = current_method->checked_exceptions_length();
 
-        if (ce_length > 0) {
+        if ((ce_length > 0 && UseStack) || UseForceThrowable) {
           if (has_known_exception_handler(0, end_index, methods, bcis,
                 current_method, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
             // TODO
@@ -553,7 +565,7 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
     const int ce_length = current_method->checked_exceptions_length();
 
-    if (ce_length > 0) {
+    if ((ce_length > 0 && UseStack) || UseForceThrowable) {
       if (has_known_exception_handler(index+1, end_index, methods, bcis,
             current_method, known_exception_type, handler_method, handler_bci, handler_index, thread)) {
         // TODO
@@ -862,6 +874,7 @@ bool has_string_void_init(KlassHandle klass) {
 
 // caught_klass may be null,
 // use handler_bci == -1 to determine whether we found a handler
+// This method will not ignore trivial exception handlers.
 void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
     Method* method,
     KlassHandle ex_klass,
@@ -902,11 +915,11 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
 
         // TODO We should use a parameter to control this
         if (ignore_no_string_void && !has_string_void_init(klass)) {
-            if ((TraceRuntimeRecovery & TRACE_IGNORE) != 0) {
-                ResourceMark rm(THREAD);
-                tty->print_cr("[Ares] fast_exception_handler_bci_and_caught_klass_for: ignore Klass: %s", klass->name()->as_C_string());
-            }
-            continue;
+          if ((TraceRuntimeRecovery & TRACE_IGNORE) != 0) {
+            ResourceMark rm(THREAD);
+            tty->print_cr("[Ares] fast_exception_handler_bci_and_caught_klass_for: ignore Klass: %s", klass->name()->as_C_string());
+          }
+          continue;
         }
 
         caught_klass = klass;
@@ -921,11 +934,11 @@ void RecoveryOracle::fast_exception_handler_bci_and_caught_klass_for(
 
         // TODO We should a parameter to control this
         if (ignore_no_string_void && !has_string_void_init(klass)) {
-            if ((TraceRuntimeRecovery & TRACE_IGNORE) != 0) {
-                ResourceMark rm(THREAD);
-                tty->print_cr("[Ares] fast_exception_handler_bci_and_caught_klass_for: ignore Klass: %s", klass->name()->as_C_string());
-            }
-            continue;
+          if ((TraceRuntimeRecovery & TRACE_IGNORE) != 0) {
+            ResourceMark rm(THREAD);
+            tty->print_cr("[Ares] fast_exception_handler_bci_and_caught_klass_for: ignore Klass: %s", klass->name()->as_C_string());
+          }
+          continue;
         }
 
         assert(klass.not_null(), "klass not loaded");
@@ -1240,6 +1253,7 @@ bool RecoveryOracle::has_known_exception_handler_force_throwable(
       continue; // a finally block
     }
 
+    // TODO: as we accept trivial error handlers, the caught class may be Throwable or Exception
     assert(caught_klass.not_null(), "sanity check");
 
     if (current_handler_bci != -1 ) {
