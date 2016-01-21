@@ -364,6 +364,7 @@ void RecoveryOracle::determine_failure_type_and_recovery_context(JavaThread* thr
               ex_klass->name()->as_C_string(),
               index,
               caught_klass->name()->as_C_string());
+          current_method->print_name(tty);
         }
         action->set_recovery_context_offset(index);
         action->set_failure_type(_trivially_handled);
@@ -482,10 +483,12 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, target_exception_klass=%s, top method)",
+          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top method)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
+              handler_index,
+              handler_index + 1, // including the incomplete top method
               known_exception_type->name()->as_C_string());
         }
 
@@ -508,12 +511,15 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
   current_method = methods->at(0);
 
+  int dropped_extra = 0;
+
   if (!current_method->is_native()) {
     current_bci = bcis->at(0);
 
     Bytecodes::Code java_code = current_method->java_code_at(current_bci);
     if (Bytecodes::is_invoke(java_code)) {
       Bytecode_invoke bi(current_method, current_bci);
+      dropped_extra = 1;
       current_method = bi.static_target(thread)();
 
       {
@@ -536,10 +542,12 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
             if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
               ResourceMark rm(thread);
-              tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, target_exception_klass=%s, top is invoke)",
+              tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top is invoke)",
                   action->origin_exception()->klass()->name()->as_C_string(),
                   failure_type_name(action->failure_type()),
                   end_index,
+                  handler_index,
+                  handler_index + 1, // the incomplete top method
                   known_exception_type->name()->as_C_string());
             }
 
@@ -583,11 +591,13 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, index=%d, target_exception_klass=%s)",
+          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
               index,
+              handler_index,
+              handler_index + dropped_extra, // possible incomplete top method
               known_exception_type->name()->as_C_string());
         }
 
