@@ -252,7 +252,7 @@ void RecoveryOracle::do_recover(JavaThread* thread, RecoveryAction* action) {
 #endif
 
   if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-    tty->print_cr("[Ares] recover: FailureType: %s, recovery context offset=%d",
+    tty->print_cr("[Ares] recover: failure type: %s, recovery context offset=%d",
         failure_type_name(action->failure_type()),
         action->recovery_context_offset());
   }
@@ -264,7 +264,9 @@ void RecoveryOracle::do_recover(JavaThread* thread, RecoveryAction* action) {
   determine_recovery_action(thread, methods, bcis, action);
 
   if ((TraceRuntimeRecovery & TRACE_CHECKING) != 0) {
-    tty->print_cr("[Ares] recover: RecoveryType: %s", recovery_type_name(action->recovery_type()));
+    assert(methods->length() > 0, "sanity check");
+    Method* top_method = methods->at(0);
+    tty->print_cr("[Ares] recover: recovery type: %s", recovery_type_name(action->recovery_type()));
   }
 }
 
@@ -364,7 +366,6 @@ void RecoveryOracle::determine_failure_type_and_recovery_context(JavaThread* thr
               ex_klass->name()->as_C_string(),
               index,
               caught_klass->name()->as_C_string());
-          current_method->print_name(tty);
         }
         action->set_recovery_context_offset(index);
         action->set_failure_type(_trivially_handled);
@@ -483,13 +484,14 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top method)",
+          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s, reflection)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
               handler_index,
               handler_index + 1, // including the incomplete top method
-              known_exception_type->name()->as_C_string());
+              known_exception_type->name()->as_C_string(),
+              current_method->name_and_sig_as_C_string());
         }
 
         action->set_recovery_type(_error_transformation);
@@ -542,13 +544,15 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
             if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
               ResourceMark rm(thread);
-              tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top is invoke)",
+              tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s, incomplete_top=%s)",
                   action->origin_exception()->klass()->name()->as_C_string(),
                   failure_type_name(action->failure_type()),
                   end_index,
                   handler_index,
                   handler_index + 1, // the incomplete top method
-                  known_exception_type->name()->as_C_string());
+                  known_exception_type->name()->as_C_string(),
+                  methods->at(0)->name_and_sig_as_C_string(),
+                  current_method->name_and_sig_as_C_string());
             }
 
             action->set_recovery_type(_error_transformation);
@@ -591,14 +595,15 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s)",
+          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
               index,
               handler_index,
               handler_index + dropped_extra, // possible incomplete top method
-              known_exception_type->name()->as_C_string());
+              known_exception_type->name()->as_C_string(),
+              methods->at(0)->name_and_sig_as_C_string());
         }
 
         action->set_recovery_type(_error_transformation);
@@ -683,11 +688,12 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
         action->set_early_return_size_of_parameters(current_method->size_of_parameters());
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top method)",
+          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top_method=%s, reflection)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
-              type2name(current_method->result_type()));
+              type2name(current_method->result_type()),
+              current_method->name_and_sig_as_C_string());
         }
         return;
       }
@@ -699,11 +705,12 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
 
       if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
         ResourceMark rm(thread);
-        tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top method)",
+        tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top_method=%s, reflection)",
             action->origin_exception()->klass()->name()->as_C_string(),
             failure_type_name(action->failure_type()),
             end_index,
-            type2name(current_method->result_type()));
+            type2name(current_method->result_type()),
+            current_method->name_and_sig_as_C_string());
       }
 
       return;
@@ -762,13 +769,14 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=%d, rettype=%s, dropped=%d)",
+          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=%d, rettype=%s, dropped=%d, top_method=%s)",
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
               index,
               type2name(bi.result_type()),
-              index + dropped_extra);
+              index + dropped_extra,
+              methods->at(0)->name_and_sig_as_C_string());
         }
 
         return;
@@ -1550,7 +1558,6 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
       }
     }
 
-
     if (!is_reflection_at_top) {
       action->set_recovery_type(_no_recovery);
       thread->runtime_recovery_state()->set_last_checked_exception(NULL);
@@ -1558,8 +1565,21 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
     }
   }
 
+  int dropped_extra = 0;
+
+  // Check whether there is an incomplete top over the top_method
+  if (!top_method->is_native()) {
+    int current_bci = bcis->at(0);
+    Bytecodes::Code java_code = top_method->java_code_at(current_bci);
+    if (Bytecodes::is_invoke(java_code)) {
+      dropped_extra = 1;
+    }
+  }
+
   Handle exception = action->origin_exception();
 
+  // In JVM, top has 0 depth
+  // In JPF, top has max_depth
   int final_max_depth = max_depth;
 
   objArrayOop result_oop = run_jpf_with_exception(thread, exception, final_max_depth);
@@ -1593,11 +1613,12 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
 
     if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
       ResourceMark rm(thread);
-      tty->print_cr("[Ares] run_jpf_with_recovery_action: (%s) (%s) (error transformation) (target_exception_klass=%s, max_depth=%d, final_max_depth=%d)",
+      tty->print_cr("[Ares] run_jpf_with_recovery_action: (%s) (%s) (error transformation) (target_exception_klass=%s, max_depth=%d, final_max_depth=%d, top_method=%s)",
           action->origin_exception()->klass()->name()->as_C_string(),
           failure_type_name(action->failure_type()),
           target_klass->name()->as_C_string(),
-          max_depth, final_max_depth);
+          max_depth, final_max_depth,
+          top_method->name_and_sig_as_C_string());
     }
 
   } else if (strcmp("EarlyReturn", type_char_array) == 0) {
@@ -1644,13 +1665,15 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
 
     if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
       ResourceMark rm(thread);
-      tty->print_cr("[Ares] run_jpf_with_recovery_action: (%s) (%s) (early return) (end_index=%d, final_max_depth=%d, index=%d, rettype=%s)",
+      tty->print_cr("[Ares] run_jpf_with_recovery_action: (%s) (%s) (early return) (end_index=%d, final_max_depth=%d, index=%d, dropped=%d, rettype=%s, top_method=%s)",
           action->origin_exception()->klass()->name()->as_C_string(),
           failure_type_name(action->failure_type()),
           max_depth,
           final_max_depth,
           index,
-          type2name(bi.result_type()));
+          index + dropped_extra,
+          type2name(bi.result_type()),
+          top_method->name_and_sig_as_C_string());
     }
 
   } else {
@@ -1658,6 +1681,9 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
   }
 }
 
+
+// as we cannot load all methods in the max_depth, i.e., recovery context,
+// we may only load the top final_max_depth frames
 objArrayOop RecoveryOracle::run_jpf_with_exception(JavaThread* thread, Handle exception, int &max_depth) {
   HandleMark hm(thread);
 
@@ -1727,6 +1753,8 @@ objArrayOop RecoveryOracle::run_jpf_with_exception(JavaThread* thread, Handle ex
   }
 }
 
+// In JVM, top's offset is 0 and top's depth is 0
+// In JPF, top's depth is max_depth
 objArrayOop RecoveryOracle::load_stack_data(JavaThread* thread, Handle exception, int &max_offset) {
   // vframes are resource allocated
   assert(thread == Thread::current(), "sanity check");
@@ -1795,15 +1823,30 @@ objArrayOop RecoveryOracle::load_stack_data(JavaThread* thread, Handle exception
               int nof_locals = locals->size();
               int nof_expressions = expressions->size();
 
+              int max_locals = jvf->method()->max_locals();
+              int max_stack  = jvf->method()->verifier_max_stack();
+
+              assert(max_locals == nof_locals, "sanity check");
+
+              // Check whether there is an incomplete top over the top_method
+              Bytecodes::Code java_code = jvf->method()->java_code_at(jvf->bci());
+              int callee_parameters = 0;
+              if (Bytecodes::is_invoke(java_code)) {
+                Bytecode_invoke bi(jvf->method(), jvf->bci());
+                callee_parameters = bi.static_target(thread)->size_of_parameters();
+              }
+
+              assert(max_stack >= (nof_expressions + callee_parameters), "sanity check");
+
               if ((TraceRuntimeRecovery & TRACE_LOAD_STACK) != 0) {
-                tty->print_cr("[Ares] load_stack_data: %s, depth=%d, nof_locals=%d, nof_expressions=%d, max_locals=%d, max_stack=%d.",
+                tty->print_cr("[Ares] load_stack_data: %s, depth=%d, nof_locals=%d, nof_expressions=%d, max_locals=%d, max_stack=%d, callee_parameters=%d.",
                     jvf->method()->name_and_sig_as_C_string(), stack_depth,
                     nof_locals, nof_expressions,
-                    jvf->method()->max_locals(), jvf->method()->max_stack());
+                    max_locals, max_stack, callee_parameters);
                 jvf->fr().print_on(tty);
               }
 
-              int slot_size = nof_locals + nof_expressions;
+              int slot_size = nof_locals + nof_expressions + callee_parameters;
 
               typeArrayHandle longSlots(thread, oopFactory::new_longArray(slot_size, thread));
               objArrayHandle objectSlots(thread, oopFactory::new_objectArray(slot_size, thread));
