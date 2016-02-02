@@ -407,8 +407,7 @@ bool RecoveryOracle::can_recover(RecoveryAction* action) {
 Handle RecoveryOracle::allocate_target_exception(JavaThread* thread, Handle origin_exception, KlassHandle target_exception_klass) {
   ResourceMark rm(thread);
 
-  bool ignore_super_class = false;
-  if (ignore_super_class && origin_exception->is_a(target_exception_klass())) {
+  if (!TransformIntoSuper && origin_exception->is_a(target_exception_klass())) {
     if ((TraceRuntimeRecovery & TRACE_TRANSFORMING) != 0) {
       ResourceMark rm(thread);
       tty->print_cr("[Ares] Ignore transforming an exception, as %s is a subclass of %s...",
@@ -484,7 +483,8 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s, reflection)",
+          tty->print_cr("[Ares] fast_error_transformation: (" INTPTR_FORMAT ") (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s, reflection)",
+              p2i((address)(action->origin_exception()())),
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
@@ -544,7 +544,8 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
             if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
               ResourceMark rm(thread);
-              tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s, incomplete_top=%s)",
+              tty->print_cr("[Ares] fast_error_transformation: (" INTPTR_FORMAT ") (%s) (%s) (error transformation) (end_index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s, incomplete_top=%s)",
+                  p2i((address)(action->origin_exception()())),
                   action->origin_exception()->klass()->name()->as_C_string(),
                   failure_type_name(action->failure_type()),
                   end_index,
@@ -595,7 +596,8 @@ void RecoveryOracle::fast_error_transformation(JavaThread* thread, GrowableArray
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_error_transformation: (%s) (%s) (error transformation) (end_index=%d, index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s)",
+          tty->print_cr("[Ares] fast_error_transformation: (" INTPTR_FORMAT ") (%s) (%s) (error transformation) (end_index=%d, index=%d, handler_index=%d, dropped=%d, target_exception_klass=%s, top_method=%s)",
+              p2i((address)action->origin_exception()()),
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
@@ -688,7 +690,8 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
         action->set_early_return_size_of_parameters(current_method->size_of_parameters());
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top_method=%s, reflection)",
+          tty->print_cr("[Ares] fast_early_return: (" INTPTR_FORMAT ") (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top_method=%s, reflection)",
+              p2i((address)action->origin_exception()()),
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
@@ -705,7 +708,8 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
 
       if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
         ResourceMark rm(thread);
-        tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top_method=%s, reflection)",
+        tty->print_cr("[Ares] fast_early_return: (" INTPTR_FORMAT ") (%s) (%s) (early return) (end_index=%d, index=0, rettype=%s, dropped=1, top_method=%s, reflection)",
+            p2i((address)action->origin_exception()()),
             action->origin_exception()->klass()->name()->as_C_string(),
             failure_type_name(action->failure_type()),
             end_index,
@@ -769,7 +773,8 @@ void RecoveryOracle::fast_early_return(JavaThread* thread, GrowableArray<Method*
 
         if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
           ResourceMark rm(thread);
-          tty->print_cr("[Ares] fast_early_return: (%s) (%s) (early return) (end_index=%d, index=%d, rettype=%s, dropped=%d, top_method=%s)",
+          tty->print_cr("[Ares] fast_early_return: (" INTPTR_FORMAT ") (%s) (%s) (early return) (end_index=%d, index=%d, rettype=%s, dropped=%d, top_method=%s)",
+              p2i((address)action->origin_exception()()),
               action->origin_exception()->klass()->name()->as_C_string(),
               failure_type_name(action->failure_type()),
               end_index,
@@ -1613,7 +1618,8 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
 
     if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
       ResourceMark rm(thread);
-      tty->print_cr("[Ares] run_jpf_with_recovery_action: (%s) (%s) (error transformation) (target_exception_klass=%s, max_depth=%d, final_max_depth=%d, top_method=%s)",
+      tty->print_cr("[Ares] run_jpf_with_recovery_action: (" INTPTR_FORMAT ") (%s) (%s) (error transformation) (target_exception_klass=%s, max_depth=%d, final_max_depth=%d, top_method=%s)",
+          p2i((address)action->origin_exception()()),
           action->origin_exception()->klass()->name()->as_C_string(),
           failure_type_name(action->failure_type()),
           target_klass->name()->as_C_string(),
@@ -1665,7 +1671,8 @@ void RecoveryOracle::run_jpf_with_recovery_action(JavaThread* thread, GrowableAr
 
     if ((TraceRuntimeRecovery & TRACE_PRINT_ACTION) != 0) {
       ResourceMark rm(thread);
-      tty->print_cr("[Ares] run_jpf_with_recovery_action: (%s) (%s) (early return) (end_index=%d, final_max_depth=%d, index=%d, dropped=%d, rettype=%s, top_method=%s)",
+      tty->print_cr("[Ares] run_jpf_with_recovery_action: (" INTPTR_FORMAT ") (%s) (%s) (early return) (end_index=%d, final_max_depth=%d, index=%d, dropped=%d, rettype=%s, top_method=%s)",
+          p2i((address)action->origin_exception()()),
           action->origin_exception()->klass()->name()->as_C_string(),
           failure_type_name(action->failure_type()),
           max_depth,

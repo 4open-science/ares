@@ -3975,7 +3975,11 @@ class CommandLineFlags {
   product(intx, ForceEarlyReturnAtIndex, 0,                                 \
           "Where we make an early return any way")                          \
   product(bool, IgnoreFinallyBlock, true,                                   \
-          "Treat a finally block as a non-trivial handler if true.")
+          "Treat a finally block as a non-trivial handler if true.")        \
+  product(bool, TransformIntoSuper, false,                                  \
+          "if false, do not transform a RuntimeException"                   \
+          "into a Exception or Throwable")
+
 
 
 

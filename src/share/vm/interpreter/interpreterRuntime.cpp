@@ -407,10 +407,11 @@ IRT_ENTRY(address, InterpreterRuntime::recovery_handler_for_exception(JavaThread
   if (rrs->is_earlyret_pending()) { // we have a pending recovery action
     if ((TraceRuntimeRecovery & TRACE_EARLYRET) != 0) {
       ResourceMark rm(thread);
-      tty->print_cr("[Ares] recovery_handler_for_exception: detect a pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d",
+      tty->print_cr("[Ares] recovery_handler_for_exception: detect a pending earlyret in interpreter: offset=%d, return type=%s, size_of_p=%d, method=%s",
           rrs->earlyret_offset(),
           type2name(rrs->earlyret_result_type()),
-          rrs->earlyret_size_of_parameters());
+          rrs->earlyret_size_of_parameters(),
+          h_method->name_and_sig_as_C_string());
     }
 
     assert(!rrs->is_in_recovery(), "recursive recovery");
